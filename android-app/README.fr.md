@@ -1,0 +1,66 @@
+# Appli Android JukePI
+
+🇬🇧 [English](README.md)
+
+La moitié Android de JukePI. Elle parcourt votre bibliothèque (pochettes, albums, artistes, recherche) et soit **pilote un ampli Denon HEOS** par l'intermédiaire du serveur JukePI, soit **joue sur le téléphone lui-même**, y compris **hors connexion** avec des albums téléchargés. Le serveur est dans [`../music-server`](../music-server/README.fr.md).
+
+Cible : **Android 17 (API 37)** (développé sur un Pixel 8a). Kotlin, Jetpack Compose, Material 3 (couleurs dynamiques). L'identifiant de paquet est `app.musicremote`, le nom affiché est « JukePI ».
+
+## Fonctions
+
+| Fonction | État |
+| --- | --- |
+| Demande de la permission réseau local (obligatoire sur Android 17) | fait, testé |
+| Découverte automatique du serveur (mDNS) et saisie manuelle de l'adresse | fait, testé |
+| Grille d'albums avec pochettes, tri (récents, A–Z, artiste, au hasard), défilement infini | fait, testé |
+| Page album, artistes, recherche plein texte (au fil de la saisie) | fait, testé |
+| Mini-lecteur et lecteur plein écran (précédent, pause, suivant, arrêt, file d'attente) | fait, testé |
+| Barre de progression déplaçable, boutons ±10 s et ±30 s | fait, testé (sur l'ampli le serveur relance le flux : ~1 s de silence ; sur le téléphone le déplacement est instantané) |
+| Volume (les touches de volume du téléphone pilotent l'ampli), coupure du son | fait, testé |
+| Notification et commandes de l'écran verrouillé (`MediaSession` Media3, cinq boutons dont ±10 s) | fait ; boutons de la notification testés ; l'écran verrouillé lui-même n'a pas été vérifié visuellement |
+| Touches multimédia matérielles (boutons d'un casque Bluetooth) | fonctionnent quand la sortie est le téléphone (voir Limites connues) |
+| Icône d'application adaptative (avec couche monochrome pour les icônes thématiques) | fait |
+| **Choix de la sortie ampli / téléphone** dans le lecteur plein écran (la file et la position suivent) | fait ; sélecteur vérifié, transfert pas encore testé |
+| **Lecture sur le téléphone** (ExoPlayer) : fichiers téléchargés, ou en continu depuis le serveur | fait, testée |
+| **Téléchargement d'albums** (Télécharger / Annuler / Retirer sur la page de l'album, reprise après interruption) | fait, testé (6 titres, 47 Mo en ~3 s) |
+| **Onglet « Téléchargés »** : tout ce qui est sur le téléphone, état et taille de chaque album, espace libre, gestion | fait, vérifié |
+| **Mode hors connexion** : détection automatique, bandeau, albums / artistes / recherche limités au contenu téléchargé, sortie forcée sur le téléphone | fait, testé en coupant le réseau |
+| Reprise d'un téléchargement interrompu au premier titre manquant | écrit ; pas testé en tuant l'appli en plein téléchargement |
+
+## Limites connues
+
+- **Les touches multimédia matérielles** (boutons d'un casque Bluetooth) n'atteignent l'appli que lorsque la sortie est le **téléphone** : Android les envoie à l'appli qui joue réellement de l'audio en local. Avec l'ampli comme sortie, les boutons de la notification et de l'écran verrouillé fonctionnent (ils parlent directement à la session) mais pas ceux du casque. Contourner cela demanderait de jouer un son silencieux sur le téléphone : non fait.
+- Hors connexion, un titre non téléchargé n'est pas lisible (grisé dans la page de l'album).
+- Sur l'ampli, un déplacement dans un titre coûte **~1 s de silence** (le serveur relance le flux à l'endroit voulu).
+- Les boutons ±30 s n'existent que dans le lecteur plein écran ; la notification et l'écran verrouillé ont ±10 s (Android autorise cinq boutons au maximum).
+
+## Compiler et installer
+
+Pré-requis : un JDK 21, les outils en ligne de commande du SDK Android avec la plateforme 37, les build-tools 37 et platform-tools, et Gradle seulement pour créer le wrapper (déjà dans le dépôt). Sous macOS avec Homebrew : `brew install openjdk@21` et `brew install --cask android-commandlinetools`, puis `sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"` et acceptation des licences (`sdkmanager --licenses`).
+
+```bash
+echo "sdk.dir=/chemin/du/sdk/android" > local.properties     # ignoré par git
+./install.sh        # compile, installe sur le téléphone branché en USB, lance l'appli
+```
+
+Ou à la main :
+
+```bash
+export JAVA_HOME=/chemin/du/jdk-21 ANDROID_HOME=/chemin/du/sdk/android
+./gradlew assembleDebug
+$ANDROID_HOME/platform-tools/adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+`JAVA_HOME` doit pointer sur le **JDK 21** : le `gradle` de Homebrew démarre sur un JDK plus récent que ce que le plugin Android accepte. Le téléphone doit avoir le **débogage USB** activé et l'ordinateur autorisé (`adb devices` doit afficher `device`).
+
+## Versions (novembre 2026)
+
+Android Gradle Plugin 9.5.1 (Kotlin intégré), Kotlin 2.4.21 (plugins Compose et sérialisation), Gradle 9.9.1, Compose BOM 2026.09.00, OkHttp 5.5.1 (+ okhttp-sse), kotlinx.serialization 1.13.0, Coil 3.6.3, Media3 1.11.1 (session + ExoPlayer), WorkManager 2.12.0, `compileSdk` 37, `targetSdk` 37, `minSdk` 34 (donne `NsdManager.registerServiceInfoCallback`).
+
+## Documentation
+
+| Fichier | Contenu |
+| --- | --- |
+| [docs/ARCHITECTURE.fr.md](docs/ARCHITECTURE.fr.md) | Organisation du code, flux de données, choix et pièges |
+| [docs/NOTES.fr.md](docs/NOTES.fr.md) | Notes de développement : enseignements, conseils de test, feuille de route |
+| [`../music-server/docs/ANDROID-CLIENT.fr.md`](../music-server/docs/ANDROID-CLIENT.fr.md) | Le contrat côté serveur : API, mDNS, flux temps réel |

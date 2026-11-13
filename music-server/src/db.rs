@@ -1,0 +1,79 @@
+use rusqlite::Connection;
+use std::path::Path;
+use std::time::Duration;
+
+const SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS albums(
+  id INTEGER PRIMARY KEY,
+  dir TEXT NOT NULL UNIQUE,
+  dir_name TEXT NOT NULL,
+  name TEXT NOT NULL,
+  artist TEXT,
+  artist_count INTEGER NOT NULL DEFAULT 0,
+  year INTEGER,
+  track_count INTEGER NOT NULL DEFAULT 0,
+  added_at INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS tracks(
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE,
+  album_id INTEGER NOT NULL REFERENCES albums(id),
+  title TEXT NOT NULL,
+  artist TEXT,
+  album_tag TEXT,
+  genre TEXT,
+  track_no INTEGER,
+  disc_no INTEGER,
+  year INTEGER,
+  duration_ms INTEGER,
+  bitrate_kbps INTEGER,
+  size INTEGER NOT NULL,
+  mtime INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS tracks_album ON tracks(album_id);
+CREATE INDEX IF NOT EXISTS albums_artist ON albums(artist);
+-- Full-text search (rebuilt by search.rs after a scan that changed something). unicode61 + remove_diacritics:
+-- eric finds Éric, prefix indexes make type-ahead (bea -> Beatles) cheap.
+CREATE VIRTUAL TABLE IF NOT EXISTS fts_tracks USING fts5(
+  title, artist, album, track_id UNINDEXED, album_id UNINDEXED,
+  tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3');
+CREATE VIRTUAL TABLE IF NOT EXISTS fts_albums USING fts5(
+  name, artist, dir_name, album_id UNINDEXED,
+  tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3');
+CREATE VIRTUAL TABLE IF NOT EXISTS fts_artists USING fts5(
+  name, tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3');
+-- Where each album's cover comes from. kind: file | embedded | online | none.
+-- source: path relative to MUSIC_ROOT (file: the image, embedded: the MP3 holding it) or, for online, a file in the cache dir.
+-- tracks_stamp/dir_mtime detect a changed album so it is resolved again; source_mtime/size feed the thumbnail cache key.
+CREATE TABLE IF NOT EXISTS album_covers(
+  album_id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,
+  source TEXT,
+  source_mtime INTEGER NOT NULL DEFAULT 0,
+  source_size INTEGER NOT NULL DEFAULT 0,
+  tracks_stamp INTEGER NOT NULL DEFAULT 0,
+  dir_mtime INTEGER NOT NULL DEFAULT 0,
+  checked_at INTEGER NOT NULL DEFAULT 0,
+  online_checked_at INTEGER NOT NULL DEFAULT 0
+);
+";
+
+/// Open (and create if needed) the index database. WAL lets the API read while a scan writes.
+pub fn open(path: &Path) -> rusqlite::Result<Connection> {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let conn = Connection::open(path)?;
+    conn.busy_timeout(Duration::from_secs(10))?;
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    conn.pragma_update(None, "synchronous", "NORMAL")?;
+    conn.execute_batch(SCHEMA)?;
+    Ok(conn)
+}
+
+/// Cheap connection for API handlers (schema already created at startup).
+pub fn connect(path: &Path) -> rusqlite::Result<Connection> {
+    let conn = Connection::open(path)?;
+    conn.busy_timeout(Duration::from_secs(10))?;
+    Ok(conn)
+}

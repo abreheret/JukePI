@@ -1,0 +1,19 @@
+[Unit]
+Description=Music server (index + MP3 stream for Denon/HEOS)
+After=network-online.target mnt-music.mount
+Wants=network-online.target mnt-music.mount
+
+[Service]
+# Adjust to your setup: user, music folder, and above all MUSIC_PUBLIC_URL = the address the Denon uses to reach THIS Pi.
+User=pi
+Environment=MUSIC_ROOT=/mnt/music/music
+Environment=MUSIC_DB=/home/pi/.local/share/music-server/index.db
+Environment=MUSIC_BIND=0.0.0.0:8765
+Environment=MUSIC_PUBLIC_URL=http://192.168.1.50:8765
+ExecStart=/home/pi/music-server/music-server
+Restart=on-failure
+RestartSec=5
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

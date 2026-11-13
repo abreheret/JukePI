@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The server speaks plain HTTP on the home network and its IP can change, so cleartext is allowed globally.
+     Nothing sensitive goes through this app (no account, no credentials). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

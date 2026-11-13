@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+
+# Personal files that predate the project and are NOT part of it
+/nas_*.txt
+/info.txt
+/sync_nas_to_pi.sh
+/test.mp3
+/Serveur musique Raspberry Pi et appli Android pour Denon DRA-900H.md
+
+# Private development journals / notes (not for publication)
+*.private
+*.private.*
+
+# Build outputs and local tooling
+target/
+build/
+.gradle/
+.kotlin/
+.idea/
+*.apk
+*.aab
+local.properties
+__pycache__/
+
+# Secrets, just in case
+.env
+.env.*
+*.pem
+*.key
+*.jks
+*.keystore
+
+# Assistant instruction files (local only)
+CLAUDE.md
+CLAUDE.fr.md
+CLAUDE.private.fr.md
+.claude/
