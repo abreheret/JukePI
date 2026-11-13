@@ -32,6 +32,7 @@ Le pilotage est côté Pi et pas côté téléphone, pour que la lecture continu
 | `id3.rs` | Construit le tag ID3v2.3 (titre, artiste, album) placé devant les flux donnés à l'ampli | Voir « Ce que l'ampli affiche » |
 | `mp3seek.rs` | Trouve l'octet où commence la trame MP3 d'un instant donné | Parcourt les trames une à une (CBR et VBR) |
 | `mdns.rs` | Annonce le serveur sur le réseau local (mDNS / DNS-SD) | Une seule interface, celle de `MUSIC_PUBLIC_URL` |
+| `fuzzy.rs` | Rapprochement tolérant aux fautes (distance d'édition, accents ignorés, mots collés) | Repli de la recherche, voir plus bas |
 | `search.rs` | Index plein texte (SQLite FTS5) | Reconstruit après un scan qui a changé quelque chose |
 | `covers.rs` | Trouve la source de pochette de chaque album, fabrique et met en cache les miniatures | Voir la section « Pochettes » |
 | `online.rs` | Recherche optionnelle de pochettes en ligne | Désactivée par défaut |
@@ -86,6 +87,10 @@ HEOS n'a **aucune commande de déplacement** et le Denon ne sait pas avancer dan
 Trois tables virtuelles FTS5 (`fts_tracks`, `fts_albums`, `fts_artists`), tokeniseur `unicode61 remove_diacritics 2` (insensible aux accents et à la casse) et index de préfixes de 2 et 3 lettres (la saisie au fil de l'eau reste rapide). Ce sont des **données dérivées** de `tracks` et `albums` : elles sont reconstruites entièrement (3 s pour 43 794 titres sur le Pi) quand un scan a ajouté, modifié ou supprimé quelque chose, ou quand leur nombre de lignes ne correspond pas à l'index. Un rescan sans changement ne les touche pas.
 
 Requête : le texte de l'utilisateur est découpé en mots (caractères alphanumériques seulement, 8 mots au maximum), chaque mot devient un terme préfixe entre guillemets et tous doivent correspondre (`"bea"* "hel"*`). Comme seuls des caractères alphanumériques survivent, aucune syntaxe FTS5 ne peut être injectée. Classement `bm25` avec pondération : titre 10, artiste 4, album 2 pour les pistes ; nom 10, artiste 5, dossier 3 pour les albums.
+
+**Un artiste, une entrée** : `albums.artist_key` est le nom de l'artiste sans casse, accents, ponctuation ni « The » initial (`recommend::artist_key`) : « Queen »/« QUEEN » et « AC/DC »/« Ac-Dc »/« ACDC » ne font qu'un. `/artists` et la recherche montrent l'orthographe la plus utilisée avec les albums de toutes, et `/albums?artist=` filtre sur la clé. La colonne est remplie au démarrage et après chaque scan.
+
+**Fautes de frappe** (`fuzzy.rs`) : quand la recherche plein texte trouve moins de 3 résultats (ou aucun artiste), les résultats proches s'ajoutent après les exacts. Chaque mot de la requête doit être à une distance d'édition (insertions, suppressions, substitutions, lettres échangées) de 1 pour 4 à 6 lettres et 2 à partir de 7 lettres, les mots courts doivent être exacts, le dernier mot peut être inachevé, et les mots d'un nom comptent aussi collés (« acdc »). Les artistes se comparent en environ une milliseconde ; les albums et titres demandent un passage sur l'index (environ une demi-seconde pour 43 794 titres sur un Pi), donc ils ne sont parcourus que quand presque rien n'a été trouvé. La réponse porte `fuzzy: true` pour que l'appli puisse dire « résultats approchants ».
 
 Les artistes viennent de `albums.artist` (artiste majoritaire du dossier), hors compilations ; un artiste qui n'apparaît que sur des titres de compilation se trouve par ses titres.
 
@@ -162,7 +167,7 @@ L'appli ajoute le résultat à la file (`POST /player/enqueue` sur l'ampli, `add
 
 ## Ce que l'ampli affiche
 
-Le Denon affiche le titre, l'artiste et l'album qu'il trouve dans le tag ID3 au début du flux (détails et mesures dans [HEOS-FINDINGS.md](HEOS-FINDINGS.fr.md), section 2). Beaucoup de fichiers n'ont pas de tag utilisable : les flux donnés à l'ampli (`/stream/{id}.mp3?n=<ms>` et `/seek/...`) sont donc construits par `api.rs::tagged_audio` : **un tag neuf tiré de l'index, puis l'audio** du fichier, en sautant le tag propre du fichier et sa trame d'en-tête Xing/Info/VBRI (cette trame empêche l'ampli d'afficher le tag). Les requêtes du téléphone (sans `?n=`) reçoivent le fichier intact, avec `Range`.
+Le Denon affiche le titre, l'artiste et l'album qu'il trouve dans le tag ID3 au début du flux (détails et mesures dans [HEOS-FINDINGS.md](HEOS-FINDINGS.fr.md), section 2). Beaucoup de fichiers n'ont pas de tag utilisable : les flux donnés à l'ampli (`/stream/{id}.mp3?n=<ms>` et `/seek/...`) sont donc construits par `api.rs::tagged_audio` : **un tag neuf tiré de l'index, puis l'audio** du fichier, en sautant le tag propre du fichier et sa trame d'en-tête Xing/Info/VBRI (cette trame empêche l'ampli d'afficher le tag). Un titre qui n'est que le nom du fichier (« 01. Come Together - The Beatles ») est affiché sans son numéro ni l'artiste (`id3::display_title`) ; un vrai titre de tag n'est jamais touché. Les requêtes du téléphone (sans `?n=`) reçoivent le fichier intact, avec `Range`.
 
 Supprimer la trame d'en-tête fait perdre la durée exacte à l'ampli. Le scan la lit donc dans l'en-tête (`tracks.duration_exact` : 1 = exacte, 2 = pas d'en-tête, estimation, 0 = pas encore vérifiée) et `player.rs` lui fait confiance plutôt qu'à celle de l'ampli. Une passe unique en arrière-plan (`scan::repair_durations`) corrige les titres indexés avant l'existence de la colonne (environ 2,5 minutes pour 43 794 titres).
 
@@ -173,7 +178,6 @@ Supprimer la trame d'en-tête fait perdre la durée exacte à l'ampli. Le scan l
 - Pas de purge du cache des miniatures orphelines (une pochette qui change laisse l'ancienne miniature, quelques dizaines de Ko).
 - Pas d'authentification sur l'API : réseau local seulement (y compris `/lastfm/*` : quiconque est sur le réseau peut délier le compte).
 - Le scrobbling ne couvre pas le lecteur du téléphone (l'appli ne remonte pas ses écoutes au serveur).
-- Pas de recherche tolérante aux fautes de frappe (FTS5 ne fait que des préfixes) : « beatels » ne trouve rien.
 - Pas de surveillance du disque (`notify`) : `POST /scan` ou redémarrage du service suffisent pour l'instant.
 - Pas de lecture sans blanc entre deux titres : ~0,3 à 0,5 s, c'est la limite de `play_stream`.
 - Pas de déplacement sans silence : ~1 s (arrêt, vidage de la file, nouvelle URL, téléchargement par le Denon).

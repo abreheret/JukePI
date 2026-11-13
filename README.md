@@ -35,7 +35,7 @@ Each folder has its own README, an `ARCHITECTURE` document and development notes
 - **No audio through the phone** when playing on the amplifier: the amplifier fetches the MP3 files from the Pi. The phone is a remote.
 - Indexes tens of thousands of MP3 files in minutes, rescans in seconds; handles messy tags, compilations, missing artwork.
 - Covers from the album folder or the files' embedded pictures, thumbnails cached; optional online lookup (off by default).
-- Accent-insensitive full-text search answering in about 15 ms.
+- Accent-insensitive full-text search answering in about 15 ms, tolerant to typos ("beatels" finds The Beatles), one entry per artist whatever the spelling.
 - The server announces itself with mDNS: the app finds it without typing an address.
 - Seek, mute, volume and queue control for the amplifier (HEOS has no seek command: the server restarts the stream at the wanted frame).
 - **"More like this"**: when the queue reaches its last track, the app keeps going with tracks of your library that are similar (Last.fm similarity when configured, your genres otherwise), leaning towards the artists you listen to most. What the amplifier plays can be **scrobbled** to your Last.fm account.

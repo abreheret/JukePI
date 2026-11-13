@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS albums(
   dir_name TEXT NOT NULL,
   name TEXT NOT NULL,
   artist TEXT,
+  -- normalised artist (no case, accents, punctuation, leading The): the spellings of one artist share one key
+  artist_key TEXT,
   artist_count INTEGER NOT NULL DEFAULT 0,
   year INTEGER,
   track_count INTEGER NOT NULL DEFAULT 0,
@@ -86,10 +88,9 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     conn.pragma_update(None, "synchronous", "NORMAL")?;
     conn.execute_batch(SCHEMA)?;
     // Index created by an older version: add the column (a no-op on a new one).
-    let has: i64 = conn.query_row("SELECT COUNT(*) FROM pragma_table_info('tracks') WHERE name='duration_exact'", [], |r| r.get(0))?;
-    if has == 0 {
-        conn.execute_batch("ALTER TABLE tracks ADD COLUMN duration_exact INTEGER NOT NULL DEFAULT 0")?;
-    }
+    add_column_if_missing(&conn, "tracks", "duration_exact", "INTEGER NOT NULL DEFAULT 0")?;
+    add_column_if_missing(&conn, "albums", "artist_key", "TEXT")?;
+    conn.execute_batch("CREATE INDEX IF NOT EXISTS albums_artist_key ON albums(artist_key)")?;
     Ok(conn)
 }
 
@@ -106,14 +107,25 @@ mod tests {
             c.execute_batch("INSERT INTO albums(id, dir, dir_name, name) VALUES(1, 'd', 'd', 'n')").unwrap();
             c.execute_batch("INSERT INTO tracks(path, album_id, title, size, mtime) VALUES('a.mp3', 1, 't', 1, 1)").unwrap();
             c.execute_batch("ALTER TABLE tracks DROP COLUMN duration_exact").unwrap(); // what an older version left behind
+            c.execute_batch("DROP INDEX albums_artist_key; ALTER TABLE albums DROP COLUMN artist_key").unwrap();
         }
         let c = open(&path).unwrap();
         let v: i64 = c.query_row("SELECT duration_exact FROM tracks WHERE path='a.mp3'", [], |r| r.get(0)).unwrap();
         assert_eq!(v, 0, "existing rows start as 'not checked'");
+        let k: Option<String> = c.query_row("SELECT artist_key FROM albums WHERE id=1", [], |r| r.get(0)).unwrap();
+        assert_eq!(k, None, "the artist key is filled in by the scan module at start-up");
         let _ = open(&path).unwrap(); // second open: no error
         drop(c);
         let _ = std::fs::remove_file(&path);
     }
+}
+
+fn add_column_if_missing(conn: &Connection, table: &str, column: &str, ddl: &str) -> rusqlite::Result<()> {
+    let has: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name='{column}'"), [], |r| r.get(0))?;
+    if has == 0 {
+        conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {ddl}"))?;
+    }
+    Ok(())
 }
 
 /// Cheap connection for API handlers (schema already created at startup).

@@ -54,7 +54,7 @@ Décisions clés, enseignements et feuille de route du serveur. Les mesures dét
 - [x] Recommandations (« même style ») : similarité Last.fm + tags locaux + historique d'écoute. [ ] Empreintes audio plus tard.
 - [ ] Pas encore vérifié par une vraie écoute : les scrobbles qui apparaissent sur le profil, l'enchaînement automatique en fin d'album.
 - [ ] Scrobbler aussi ce que joue le téléphone (l'appli devrait remonter ses écoutes au serveur).
-- [ ] Recherche tolérante aux fautes de frappe (trigrammes ou distance d'édition) ; unifier les orthographes d'artistes (« AC/DC » / « Ac-Dc »).
+- [x] Recherche tolérante aux fautes de frappe et orthographes d'artistes fusionnées (« Queen »/« QUEEN », « AC/DC »/« Ac-Dc »).
 - [ ] Pré-générer les miniatures de 300 px après un scan si la première ouverture de la grille est lente.
 - [ ] Surveillance du disque (`notify`) au lieu de `POST /scan`.
 - [ ] Authentification facultative si l'API sort un jour du réseau local.

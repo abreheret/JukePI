@@ -46,6 +46,48 @@ pub fn build_tag(title: &str, artist: Option<&str>, album: Option<&str>) -> Vec<
     tag
 }
 
+/// The title to show on the amplifier for a track whose title is only its file name ("01. Come Together - The Beatles"):
+/// the track number and the artist's name are dropped. A real tag title is returned as it is.
+pub fn display_title(title: &str, artist: Option<&str>, file_stem: &str) -> String {
+    if title.trim().to_lowercase() != file_stem.trim().to_lowercase() {
+        return title.to_string(); // it came from a tag: leave it alone
+    }
+    let mut t = title.trim().to_string();
+    // Leading number: "01. ", "02 - ", "3) ", "04_", or two digits and a space ("01 Come Together").
+    let digits = t.chars().take_while(|c| c.is_ascii_digit()).count();
+    if (1..=3).contains(&digits) {
+        let rest = &t[digits..];
+        let after_sep = rest.trim_start_matches([' ', '.', '-', '_', ')', '\u{2013}']);
+        let has_sep = rest.starts_with(['.', '-', '_', ')', '\u{2013}']) || rest.starts_with(" -") || rest.starts_with(" .");
+        let zero_padded = digits == 2 && t.starts_with('0') && rest.starts_with(' ');
+        if !after_sep.is_empty() && after_sep.len() < rest.len() && (has_sep || zero_padded) {
+            t = after_sep.to_string();
+        }
+    }
+    if let Some(a) = artist.map(str::trim).filter(|a| !a.is_empty()) {
+        let (lt, la) = (t.to_lowercase(), a.to_lowercase());
+        if let Some(head) = lt.strip_suffix(&la).and_then(|h| h.trim_end().strip_suffix('-')).map(str::trim_end) {
+            t = t[..head.len()].to_string();
+        } else if let Some(tail) = lt.strip_prefix(&la).and_then(|h| h.trim_start().strip_prefix('-')).map(str::trim_start) {
+            t = t[t.len() - tail.len()..].to_string();
+        }
+    }
+    if t.contains('_') && !t.contains(' ') {
+        t = t.replace('_', " ");
+    }
+    let t = t.trim().to_string();
+    if t.is_empty() { title.to_string() } else { t }
+}
+
+/// The line the Denon's front panel scrolls: it only shows the title, so the artist goes into it ("Come Together -
+/// The Beatles"). Nothing is added when the title already ends with the artist or the artist is unknown.
+pub fn screen_title(title: &str, artist: Option<&str>) -> String {
+    match artist.map(str::trim).filter(|a| !a.is_empty()) {
+        Some(a) if !title.to_lowercase().trim_end().ends_with(&a.to_lowercase()) => format!("{title} - {a}"),
+        _ => title.to_string(),
+    }
+}
+
 /// Length in bytes of the ID3v2 tag at the start of `head` (10 bytes are enough), 0 when there is none.
 pub fn existing_tag_len(head: &[u8]) -> u64 {
     if head.len() < 10 || &head[..3] != b"ID3" || head[6..10].iter().any(|b| b & 0x80 != 0) {
@@ -104,6 +146,32 @@ mod tests {
     fn empty_artist_and_album_are_left_out() {
         let t = build_tag("Only a title", Some(""), None);
         assert_eq!(read_frames(&t).len(), 1);
+    }
+
+    #[test]
+    fn file_name_titles_are_cleaned_but_tag_titles_are_not() {
+        let d = display_title;
+        assert_eq!(d("01. Come Together - The Beatles", Some("The Beatles"), "01. Come Together - The Beatles"), "Come Together");
+        assert_eq!(d("02 - Intro", Some("2Pac"), "02 - Intro"), "Intro");
+        assert_eq!(d("3) Yesterday", None, "3) Yesterday"), "Yesterday");
+        assert_eq!(d("04_Let_It_Be", None, "04_Let_It_Be"), "Let It Be");
+        assert_eq!(d("01 Help", None, "01 Help"), "Help", "zero-padded number and a space");
+        assert_eq!(d("The Beatles - Help", Some("The Beatles"), "The Beatles - Help"), "Help", "artist prefix");
+        assert_eq!(d("21 Guns", None, "21 Guns"), "21 Guns", "a title that starts with a number");
+        assert_eq!(d("1999", None, "1999"), "1999");
+        assert_eq!(d("7", None, "7"), "7");
+        assert_eq!(d("01. Come Together - The Beatles", Some("The Beatles"), "some other file name"), "01. Come Together - The Beatles", "a tag title is never touched");
+        assert_eq!(d("01 - The Beatles", Some("The Beatles"), "01 - The Beatles"), "The Beatles", "a song called like its artist keeps its name");
+        assert_eq!(d("01 -", None, "01 -"), "01 -", "nothing left after the number: keep the original");
+    }
+
+    #[test]
+    fn the_artist_goes_into_the_scrolling_title() {
+        assert_eq!(screen_title("Come Together", Some("The Beatles")), "Come Together - The Beatles");
+        assert_eq!(screen_title("Come Together - The Beatles", Some("The Beatles")), "Come Together - The Beatles", "not twice");
+        assert_eq!(screen_title("Intro", None), "Intro");
+        assert_eq!(screen_title("Intro", Some("  ")), "Intro");
+        assert_eq!(screen_title("Hey You", Some("Pink Floyd")), "Hey You - Pink Floyd");
     }
 
     #[test]

@@ -72,9 +72,9 @@ Toutes les réponses sont en JSON. Pas d'authentification : réseau local de con
 | `GET /health` | `{"status":"ok"}` |
 | `GET /albums?limit=50&offset=0&sort=name\|artist\|recent\|random&q=texte&artist=nom` | `{total, limit, offset, items:[{id,name,artist,various_artists,year,track_count,has_cover,cover_path}]}` |
 | `GET /albums/{id}` | `{album, tracks:[{id,title,artist,genre,track_no,disc_no,year,duration_ms,stream_path}]}` |
-| `GET /artists` | `{total, items:[{name, album_count}]}` (hors compilations) |
+| `GET /artists` | `{total, items:[{name, album_count}]}` (hors compilations). Les orthographes d'un même artiste (« Queen »/« QUEEN », « AC/DC »/« Ac-Dc ») sont fusionnées : la plus utilisée est affichée, `album_count` les compte toutes, et `/albums?artist=` répond à n'importe laquelle |
 | `GET /tracks/{id}` | une piste |
-| `GET /search?q=texte&limit=10&types=albums,artists,tracks` | recherche plein texte : `{query, albums, artists, tracks}`. Insensible aux accents et à la casse, chaque mot est un préfixe (`bea hel` trouve *The Beatles – Help!*), classement par pertinence (le titre pèse plus que l'artiste, qui pèse plus que l'album). `limit` par rubrique : 1 à 50 (défaut 10). Les pistes portent en plus `album_name` |
+| `GET /search?q=texte&limit=10&types=albums,artists,tracks` | recherche plein texte : `{query, albums, artists, tracks}`. Insensible aux accents et à la casse, chaque mot est un préfixe (`bea hel` trouve *The Beatles – Help!*), classement par pertinence (le titre pèse plus que l'artiste, qui pèse plus que l'album). `limit` par rubrique : 1 à 50 (défaut 10). Les pistes portent en plus `album_name`. **Tolérante aux fautes de frappe** : quand presque rien n'est trouvé (ou aucun artiste), les résultats proches par distance d'édition s'ajoutent après les exacts (« beatels » trouve *The Beatles*, « acdc » trouve *AC/DC*) et `fuzzy` vaut `true` |
 | `GET /cover/{album_id}?size=300` | miniature JPEG de l'album. `size` ∈ {64, 150, 300, 600} (défaut 300) ; ratio conservé, jamais agrandie ; `ETag` + `Cache-Control: max-age=86400` (`304` sur `If-None-Match`) ; `404` si l'album n'a pas de pochette |
 | `GET /covers` | statistiques : albums par origine de pochette (`file`, `embedded`, `online`, `none`) |
 | `GET /stream/{id}.mp3` | le fichier MP3 : `audio/mpeg`, `Accept-Ranges: bytes`, `206` sur `Range` |

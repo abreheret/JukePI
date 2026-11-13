@@ -32,6 +32,7 @@ Playback is driven from the Pi, not from the phone, so it keeps going when the p
 | `mp3seek.rs` | Finds the byte where the MP3 frame of a given time starts; reads the Xing/Info/VBRI header frame (exact length) | Walks the frames one by one (CBR and VBR) |
 | `id3.rs` | Builds the ID3v2.3 tag (title, artist, album) put in front of the streams given to the amplifier | See "What the amplifier displays" |
 | `mdns.rs` | Announces the server on the local network (mDNS / DNS-SD) | Single interface, the one of `MUSIC_PUBLIC_URL` |
+| `fuzzy.rs` | Typo-tolerant matching (edit distance, accents folded, words glued) | Fallback of the search, see below |
 | `search.rs` | Full-text index (SQLite FTS5) | Rebuilt after a scan that changed something |
 | `covers.rs` | Finds each album's cover source, builds and caches thumbnails | See the "Covers" section |
 | `online.rs` | Optional online cover lookup | Off by default |
@@ -88,6 +89,10 @@ Three FTS5 virtual tables (`fts_tracks`, `fts_albums`, `fts_artists`), tokenizer
 Query: the user's text is split into words (alphanumeric characters only, 8 words at most), each word becomes a quoted prefix term, and all must match (`"bea"* "hel"*`). Since only alphanumeric characters survive, no FTS5 syntax can be injected. `bm25` ranking with weights: title 10, artist 4, album 2 for tracks; name 10, artist 5, folder 3 for albums.
 
 Artists come from `albums.artist` (the folder's main artist), compilations excluded; an artist who only appears on compilation tracks is found through those tracks.
+
+**One artist, one entry**: `albums.artist_key` is the artist's name without case, accents, punctuation or a leading "The" (`recommend::artist_key`), so "Queen"/"QUEEN" and "AC/DC"/"Ac-Dc"/"ACDC" are one artist. `/artists` and the search show the most used spelling with the albums of all of them, and `/albums?artist=` filters on the key. The column is filled at start-up and after every scan.
+
+**Typos** (`fuzzy.rs`): when the full-text search finds fewer than 3 results (or no artist), close matches are added after the exact ones. Every word of the query must be within an edit distance (insertions, deletions, substitutions, swapped letters) of 1 for 4-6 letters and 2 from 7 letters, short words must be exact, the last word may be unfinished, and the words of a name also count glued together ("acdc"). Artists are matched in about a millisecond; albums and tracks need a pass over the index (about half a second for 43,794 tracks on a Pi), so they are only scanned when almost nothing was found. The answer carries `fuzzy: true` so the app can say "close matches".
 
 ## mDNS (`mdns.rs`)
 
@@ -162,7 +167,7 @@ The app appends the result to the queue (`POST /player/enqueue` on the amplifier
 
 ## What the amplifier displays
 
-The Denon shows the title, artist and album it finds in the ID3 tag at the start of the stream (details and measurements in [HEOS-FINDINGS.md](HEOS-FINDINGS.md), section 2). Many files have no usable tag, so the streams given to the amplifier (`/stream/{id}.mp3?n=<ms>` and `/seek/...`) are built by `api.rs::tagged_audio`: **a fresh tag from the index, then the audio** of the file, skipping the file's own tag and its Xing/Info/VBRI header frame (that frame stops the amplifier from showing the tag). The phone's requests (no `?n=`) get the file untouched, with `Range`.
+The Denon shows the title, artist and album it finds in the ID3 tag at the start of the stream (details and measurements in [HEOS-FINDINGS.md](HEOS-FINDINGS.md), section 2). Many files have no usable tag, so the streams given to the amplifier (`/stream/{id}.mp3?n=<ms>` and `/seek/...`) are built by `api.rs::tagged_audio`: **a fresh tag from the index, then the audio** of the file, skipping the file's own tag and its Xing/Info/VBRI header frame (that frame stops the amplifier from showing the tag). A title that is only the file name ("01. Come Together - The Beatles") is shown without its number and artist (`id3::display_title`); a real tag title is never touched. The phone's requests (no `?n=`) get the file untouched, with `Range`.
 
 Dropping the header frame costs the amplifier the exact length. So the scan reads it from the header (`tracks.duration_exact`: 1 = exact, 2 = no header, an estimate, 0 = not checked) and `player.rs` trusts that value over the amplifier's. A one-off background pass (`scan::repair_durations`) fixes the tracks indexed before the column existed (about 2.5 minutes for 43,794 tracks).
 
@@ -173,7 +178,6 @@ Dropping the header frame costs the amplifier the exact length. So the scan read
 - No purge of orphan thumbnails (a changed cover leaves the old thumbnail behind, a few tens of KB).
 - No API authentication: local network only (this includes `/lastfm/*`: anyone on the network can unlink the account).
 - Scrobbling does not cover the phone's own player (the app does not report its listens to the server).
-- No typo-tolerant search (FTS5 only does prefixes): "beatels" finds nothing.
 - No disk watching (`notify`): `POST /scan` or a service restart is enough for now.
 - No gapless playback between tracks: ~0.3–0.5 s, the limit of `play_stream`.
 - No seek without silence: ~1 s (stop, clear the queue, new URL, download by the amplifier).

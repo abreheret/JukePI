@@ -1,6 +1,7 @@
 mod api;
 mod covers;
 mod db;
+mod fuzzy;
 mod heos;
 mod id3;
 mod lastfm;
@@ -32,7 +33,9 @@ async fn main() -> anyhow::Result<()> {
     let db_path = PathBuf::from(env_or("MUSIC_DB", &format!("{home}/.local/share/music-server/index.db")));
     let bind = env_or("MUSIC_BIND", "0.0.0.0:8765");
 
-    db::open(&db_path)?; // create schema before serving
+    let conn = db::open(&db_path)?; // create schema before serving
+    scan::refresh_artist_keys(&conn)?; // after an upgrade: fills the new column
+    drop(conn);
     info!("root={} db={} bind={}", root.display(), db_path.display(), bind);
 
     let scan_state: scan::SharedScan = Arc::new(Mutex::new(scan::ScanState::default()));

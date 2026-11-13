@@ -84,6 +84,13 @@ pub fn norm_artist(s: &str) -> String {
     online::normalize(lower)
 }
 
+/// Key that groups the spellings of one artist: `norm_artist`, or the lowercase name when nothing is left of it
+/// (an artist called "!!!").
+pub fn artist_key(s: &str) -> String {
+    let k = norm_artist(s);
+    if k.is_empty() { s.trim().to_lowercase() } else { k }
+}
+
 /// Comparable form of a title: bracketed parts ("(Remastered 2009)") and punctuation are ignored.
 pub fn norm_title(s: &str) -> String {
     online::normalize(s)
@@ -405,6 +412,16 @@ mod tests {
         assert_eq!(norm_artist("Éric Clapton"), norm_artist("éric  clapton"));
         assert_eq!(norm_title("Help! (Remastered 2009)"), norm_title("help"));
         assert_ne!(norm_artist("Theory of a Deadman"), norm_artist("ory of a deadman"));
+    }
+
+    #[test]
+    fn spellings_of_one_artist_share_a_key() {
+        assert_eq!(artist_key("AC/DC"), artist_key("Ac-Dc"));
+        assert_eq!(artist_key("AC/DC"), artist_key("ACDC"));
+        assert_eq!(artist_key("QUEEN"), artist_key("Queen"));
+        assert_eq!(artist_key("The Beatles"), artist_key("Beatles"));
+        assert_ne!(artist_key("Queen"), artist_key("Queen + Paul Rodgers"));
+        assert_eq!(artist_key("!!!"), "!!!");
     }
 
     #[test]

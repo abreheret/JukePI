@@ -1,5 +1,5 @@
 use crate::player::{self, Cmd, PlayerHandle, QueueItem};
-use crate::{covers, db, lastfm, recommend, scan, search};
+use crate::{covers, db, fuzzy, lastfm, recommend, scan, search};
 use axum::body::Body;
 use axum::extract::{Path, Query, Request, State};
 use axum::http::StatusCode;
@@ -151,8 +151,9 @@ async fn albums(State(st): State<AppState>, Query(q): Query<AlbumsQuery>) -> Api
             args.extend([Value::Text(like.clone()), Value::Text(like.clone()), Value::Text(like)]);
         }
         if let Some(a) = q.artist {
-            wh.push("artist = ? COLLATE NOCASE".into());
-            args.push(Value::Text(a));
+            // Every spelling of the artist ("Queen", "QUEEN"; "AC/DC", "Ac-Dc") answers to the same key.
+            wh.push("artist_key = ?".into());
+            args.push(Value::Text(recommend::artist_key(&a)));
         }
         let where_sql = wh.join(" AND ");
         let total: i64 = c.query_row(
@@ -308,15 +309,38 @@ async fn lastfm_unlink(State(st): State<AppState>) -> StatusCode {
     StatusCode::NO_CONTENT
 }
 
+/// One entry per artist, the spellings merged: the most used spelling is shown, the albums of all of them counted.
+/// `(display name, key, album count)`, sorted by name.
+fn merged_artists(c: &Connection) -> rusqlite::Result<Vec<(String, String, i64)>> {
+    // Who is an artist: albums with at most 3 artists (the rest are compilations).
+    let mut st = c.prepare("SELECT artist, COUNT(*) AS n FROM albums WHERE artist IS NOT NULL AND artist_count <= 3 GROUP BY artist")?;
+    let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?.collect::<Result<Vec<_>, _>>()?;
+    // How many albums they have: all of them, as `/albums?artist=` answers.
+    let mut st = c.prepare("SELECT artist_key, COUNT(*) FROM albums WHERE artist_key IS NOT NULL GROUP BY artist_key")?;
+    let totals: std::collections::HashMap<String, i64> =
+        st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?.collect::<Result<_, _>>()?;
+    // key -> (most used spelling, its count)
+    let mut by_key: std::collections::HashMap<String, (String, i64)> = std::collections::HashMap::new();
+    for (name, n) in rows {
+        let e = by_key.entry(recommend::artist_key(&name)).or_insert((name.clone(), 0));
+        if n > e.1 || (n == e.1 && name.to_lowercase() < e.0.to_lowercase()) {
+            *e = (name, n);
+        }
+    }
+    let mut out: Vec<(String, String, i64)> = by_key
+        .into_iter()
+        .map(|(k, (name, n))| {
+            let total = totals.get(&k).copied().unwrap_or(n);
+            (name, k, total)
+        })
+        .collect();
+    out.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()).then(a.1.cmp(&b.1)));
+    Ok(out)
+}
+
 async fn artists(State(st): State<AppState>) -> ApiResult<Json<Json_>> {
     with_db(&st, |c| {
-        let mut st = c.prepare(
-            "SELECT artist, COUNT(*) AS n FROM albums WHERE artist IS NOT NULL AND artist_count <= 3
-             GROUP BY artist COLLATE NOCASE ORDER BY artist COLLATE NOCASE",
-        )?;
-        let items = st
-            .query_map([], |r| Ok(json!({"name": r.get::<_, String>(0)?, "album_count": r.get::<_, i64>(1)?})))?
-            .collect::<Result<Vec<_>, _>>()?;
+        let items: Vec<Json_> = merged_artists(c)?.into_iter().map(|(name, _, n)| json!({"name": name, "album_count": n})).collect();
         Ok(Json(json!({"total": items.len(), "items": items})))
     })
     .await
@@ -610,14 +634,24 @@ async fn search_handler(State(st): State<AppState>, Query(q): Query<SearchQuery>
             vec![]
         };
         let artists: Vec<Json_> = if want_artists {
-            let mut s = c.prepare(
-                "SELECT fts_artists.name,
-                        (SELECT COUNT(*) FROM albums a WHERE a.artist = fts_artists.name COLLATE NOCASE) AS n
-                 FROM fts_artists WHERE fts_artists MATCH ?1 ORDER BY bm25(fts_artists), fts_artists.name LIMIT ?2",
-            )?;
-            let v = s
-                .query_map(params![fts, limit], |r| Ok(json!({"name": r.get::<_, String>(0)?, "album_count": r.get::<_, i64>(1)?})))?
-                .collect::<Result<Vec<_>, _>>()?;
+            let mut s = c.prepare("SELECT fts_artists.name FROM fts_artists WHERE fts_artists MATCH ?1 ORDER BY bm25(fts_artists), fts_artists.name LIMIT ?2")?;
+            let found: Vec<String> = s.query_map(params![fts, limit * 4], |r| r.get(0))?.collect::<Result<Vec<_>, _>>()?;
+            // Spellings of one artist ("Queen", "QUEEN") count once; the album count covers all of them.
+            let merged = merged_artists(c)?;
+            let mut seen = std::collections::HashSet::new();
+            let mut v = vec![];
+            for name in found {
+                let key = recommend::artist_key(&name);
+                if !seen.insert(key.clone()) {
+                    continue;
+                }
+                if let Some((shown, _, n)) = merged.iter().find(|m| m.1 == key) {
+                    v.push(json!({"name": shown, "album_count": n}));
+                }
+                if v.len() as i64 >= limit {
+                    break;
+                }
+            }
             v
         } else {
             vec![]
@@ -643,9 +677,93 @@ async fn search_handler(State(st): State<AppState>, Query(q): Query<SearchQuery>
         } else {
             vec![]
         };
-        Ok(Json(json!({"query": text, "albums": albums, "artists": artists, "tracks": tracks})))
+        let (mut albums, mut artists, mut tracks) = (albums, artists, tracks);
+        let mut fuzzy = false;
+        // Almost nothing found: the query may contain a typo ("beatels"). Add the close matches after the exact ones.
+        let typo_possible = fuzzy::words(&text).iter().any(|w| w.len() >= 4);
+        let few = albums.len() + artists.len() + tracks.len() < 3;
+        // No artist found at all ("quen" only matches Quentin): offering the close artists costs about a millisecond.
+        // The albums and tracks are scanned only when almost nothing was found (about half a second on a Pi).
+        if typo_possible && (few || (want_artists && artists.is_empty())) {
+            let (fa, far, ft) = fuzzy_results(c, &text, limit, want_albums && few, want_artists, want_tracks && few)?;
+            let mut add = |dst: &mut Vec<Json_>, extra: Vec<Json_>, key: &str| {
+                for e in extra {
+                    if !dst.iter().any(|d| d[key] == e[key]) && (dst.len() as i64) < limit {
+                        dst.push(e);
+                        fuzzy = true;
+                    }
+                }
+            };
+            add(&mut albums, fa, "id");
+            add(&mut artists, far, "name");
+            add(&mut tracks, ft, "id");
+        }
+        Ok(Json(json!({"query": text, "albums": albums, "artists": artists, "tracks": tracks, "fuzzy": fuzzy})))
     })
     .await
+}
+
+/// Typo-tolerant fallback of the search: the same three kinds of results, found by edit distance (`fuzzy.rs`).
+fn fuzzy_results(c: &Connection, text: &str, limit: i64, want_albums: bool, want_artists: bool, want_tracks: bool) -> ApiResult<(Vec<Json_>, Vec<Json_>, Vec<Json_>)> {
+    let query = fuzzy::words(text);
+    let limit = limit as usize;
+    let top = |mut v: Vec<(usize, i64)>| -> Vec<i64> {
+        v.sort();
+        v.into_iter().take(limit).map(|(_, id)| id).collect()
+    };
+    let artists: Vec<Json_> = if want_artists {
+        let mut v: Vec<(usize, std::cmp::Reverse<i64>, String)> = merged_artists(c)?
+            .into_iter()
+            .filter_map(|(name, _, n)| fuzzy::score(&query, &fuzzy::words(&name)).map(|s| (s, std::cmp::Reverse(n), name)))
+            .collect();
+        v.sort(); // closest first, then the artist with the most albums
+        v.into_iter().take(limit).map(|(_, n, name)| json!({"name": name, "album_count": n.0})).collect()
+    } else {
+        vec![]
+    };
+    let albums: Vec<Json_> = if want_albums {
+        let mut st = c.prepare("SELECT id, name, COALESCE(artist, '') FROM albums")?;
+        let ids = top(st
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?
+            .filter_map(|r| r.ok())
+            .filter_map(|(id, name, artist)| fuzzy::score(&query, &fuzzy::words(&format!("{name} {artist}"))).map(|s| (s, id)))
+            .collect());
+        let mut by_id = std::collections::HashMap::new();
+        let mut st = c.prepare(
+            "SELECT albums.id AS id, albums.name AS name, albums.artist AS artist, artist_count, year, track_count,
+                    (cv.kind IS NOT NULL AND cv.kind <> 'none') AS has_cover
+             FROM albums LEFT JOIN album_covers cv ON cv.album_id = albums.id WHERE albums.id=?1",
+        )?;
+        for id in &ids {
+            if let Ok(j) = st.query_row(params![id], album_json) {
+                by_id.insert(*id, j);
+            }
+        }
+        ids.iter().filter_map(|id| by_id.remove(id)).collect()
+    } else {
+        vec![]
+    };
+    let tracks: Vec<Json_> = if want_tracks {
+        let mut st = c.prepare("SELECT t.id, t.title, COALESCE(t.artist, a.artist, ''), a.name FROM tracks t JOIN albums a ON a.id = t.album_id")?;
+        let ids = top(st
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?)))?
+            .filter_map(|r| r.ok())
+            .filter_map(|(id, title, artist, album)| fuzzy::score(&query, &fuzzy::words(&format!("{title} {artist} {album}"))).map(|s| (s, id)))
+            .collect());
+        let mut st = c.prepare(&format!("{TRACK_SELECT} WHERE t.id=?1"))?;
+        let mut v = vec![];
+        for id in ids {
+            if let Ok(mut j) = st.query_row(params![id], track_json) {
+                let album: String = c.query_row("SELECT a.name FROM tracks t JOIN albums a ON a.id=t.album_id WHERE t.id=?1", params![id], |r| r.get(0))?;
+                j["album_name"] = json!(album);
+                v.push(j);
+            }
+        }
+        v
+    } else {
+        vec![]
+    };
+    Ok((albums, artists, tracks))
 }
 
 #[derive(Deserialize)]
@@ -678,11 +796,16 @@ async fn player_seek(State(st): State<AppState>, Json(b): Json<SeekBody>) -> Api
 /// Title, artist and album of a track as the index knows them: what the amplifier should display.
 fn tag_for(c: &Connection, id: i64) -> ApiResult<(Vec<u8>, bool)> {
     c.query_row(
-        "SELECT t.title, COALESCE(t.artist, a.artist), a.name, t.duration_exact FROM tracks t JOIN albums a ON a.id = t.album_id WHERE t.id=?1",
+        "SELECT t.title, COALESCE(t.artist, a.artist), a.name, t.duration_exact, t.path FROM tracks t JOIN albums a ON a.id = t.album_id WHERE t.id=?1",
         params![id],
         |r| {
-            let tag = crate::id3::build_tag(&r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?.as_deref(), r.get::<_, Option<String>>(2)?.as_deref());
-            Ok((tag, r.get::<_, i64>(3)? == 1))
+            let (title, artist, album, path): (String, Option<String>, Option<String>, String) = (r.get(0)?, r.get(1)?, r.get(2)?, r.get(4)?);
+            // A title that is only the file name ("01. Come Together - The Beatles") is shown without number and artist.
+            let stem = std::path::Path::new(&path).file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            let shown = crate::id3::display_title(&title, artist.as_deref(), stem);
+            // The front panel only scrolls the title: the artist goes into it.
+            let line = crate::id3::screen_title(&shown, artist.as_deref());
+            Ok((crate::id3::build_tag(&line, artist.as_deref(), album.as_deref()), r.get::<_, i64>(3)? == 1))
         },
     )
     .map_err(|e| match e {

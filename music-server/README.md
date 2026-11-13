@@ -72,9 +72,9 @@ All responses are JSON. No authentication: trusted local network only.
 | `GET /health` | `{"status":"ok"}` |
 | `GET /albums?limit=50&offset=0&sort=name\|artist\|recent\|random&q=text&artist=name` | `{total, limit, offset, items:[{id,name,artist,various_artists,year,track_count,has_cover,cover_path}]}` |
 | `GET /albums/{id}` | `{album, tracks:[{id,title,artist,genre,track_no,disc_no,year,duration_ms,stream_path}]}` |
-| `GET /artists` | `{total, items:[{name, album_count}]}` (compilations excluded) |
+| `GET /artists` | `{total, items:[{name, album_count}]}` (compilations excluded). The spellings of one artist ("Queen"/"QUEEN", "AC/DC"/"Ac-Dc") are merged: the most used one is shown, `album_count` counts all of them, and `/albums?artist=` answers to any of them |
 | `GET /tracks/{id}` | one track |
-| `GET /search?q=text&limit=10&types=albums,artists,tracks` | full-text search: `{query, albums, artists, tracks}`. Accent- and case-insensitive, every word is a prefix (`bea hel` finds *The Beatles – Help!*), ranked by relevance (title weighs more than artist, which weighs more than album). `limit` per section: 1–50 (default 10). Tracks also carry `album_name` |
+| `GET /search?q=text&limit=10&types=albums,artists,tracks` | full-text search: `{query, albums, artists, tracks}`. Accent- and case-insensitive, every word is a prefix (`bea hel` finds *The Beatles – Help!*), ranked by relevance (title weighs more than artist, which weighs more than album). `limit` per section: 1–50 (default 10). Tracks also carry `album_name`. **Typo-tolerant**: when almost nothing is found (or no artist), close matches by edit distance are added after the exact ones ("beatels" finds *The Beatles*, "acdc" finds *AC/DC*) and `fuzzy` is `true` |
 | `GET /cover/{album_id}?size=300` | JPEG thumbnail. `size` ∈ {64, 150, 300, 600} (default 300); aspect ratio kept, never upscaled; `ETag` + `Cache-Control: max-age=86400` (`304` on `If-None-Match`); `404` when the album has no cover |
 | `GET /covers` | statistics: albums by cover origin (`file`, `embedded`, `online`, `none`) |
 | `GET /stream/{id}.mp3` | the MP3 file: `audio/mpeg`, `Accept-Ranges: bytes`, `206` on `Range` |

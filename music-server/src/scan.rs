@@ -343,6 +343,7 @@ pub fn run(root: &Path, db_path: &Path, state: &SharedScan) -> Result<()> {
     }
     remove_missing(&conn, &existing, &seen, state)?;
     refresh_albums(&conn)?;
+    refresh_artist_keys(&conn)?;
     // Derived data: failures are logged, never fatal.
     let changed = {
         let st = state.lock().unwrap();
@@ -375,6 +376,23 @@ fn remove_missing(
     }
     conn.execute_batch("DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks); DELETE FROM album_covers WHERE album_id NOT IN (SELECT id FROM albums); COMMIT")?;
     bump(state, |s| s.removed = gone.len() as u64);
+    Ok(())
+}
+
+/// Fill `albums.artist_key` (and keep it right after the artist of an album changed).
+pub fn refresh_artist_keys(conn: &Connection) -> Result<()> {
+    let rows: Vec<(i64, Option<String>, Option<String>)> = conn
+        .prepare("SELECT id, artist, artist_key FROM albums")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+        .collect::<Result<_, _>>()?;
+    conn.execute_batch("BEGIN")?;
+    for (id, artist, old) in rows {
+        let key = artist.as_deref().map(crate::recommend::artist_key);
+        if key != old {
+            conn.execute("UPDATE albums SET artist_key=?1 WHERE id=?2", params![key, id])?;
+        }
+    }
+    conn.execute_batch("COMMIT")?;
     Ok(())
 }
 

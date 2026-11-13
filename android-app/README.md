@@ -15,7 +15,7 @@ Target: **Android 17 (API 37)** (developed on a Pixel 8a). Kotlin, Jetpack Compo
 | Local-network permission flow (required on Android 17) | done, tested |
 | Automatic server discovery (mDNS) and manual address entry | done, tested |
 | Album grid with covers, sorting (recent, A–Z, artist, random), infinite scroll | done, tested |
-| Album page, artists, full-text search (type-ahead) | done, tested |
+| Album page, artists, full-text search (type-ahead, typo-tolerant: "Close matches" are labelled) | done, tested |
 | Mini player and full-screen player (previous, pause, next, stop, queue) | done, tested |
 | Draggable timeline, ±10 s and ±30 s buttons | done, tested (on the amplifier the server restarts the stream: ~1 s of silence; on the phone seeking is instant) |
 | Volume (phone volume keys drive the amplifier), mute | done, tested |

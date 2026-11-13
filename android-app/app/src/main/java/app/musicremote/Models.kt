@@ -55,6 +55,8 @@ data class SearchResult(
     val albums: List<Album> = emptyList(),
     val artists: List<ArtistItem> = emptyList(),
     val tracks: List<Track> = emptyList(),
+    /** The server added close matches because of a possible typo in the query. */
+    val fuzzy: Boolean = false,
 )
 
 @Serializable

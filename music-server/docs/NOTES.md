@@ -54,7 +54,7 @@ Key decisions, lessons learned and roadmap of the server. The detailed measureme
 - [x] Recommendations ("more like this"): Last.fm similarity + local tags + listening history. [ ] Audio embeddings later.
 - [ ] Not yet checked by a real listen: scrobbles appearing on the profile, the automatic chaining at the end of an album.
 - [ ] Scrobble what the phone plays too (the app would have to report its listens to the server).
-- [ ] Typo-tolerant search (trigrams or edit distance); unify artist spellings ("AC/DC" / "Ac-Dc").
+- [x] Typo-tolerant search and merged artist spellings ("Queen"/"QUEEN", "AC/DC"/"Ac-Dc").
 - [ ] Pre-generate 300 px thumbnails after a scan if the first opening of the grid is slow.
 - [ ] Disk watching (`notify`) instead of `POST /scan`.
 - [ ] Optional authentication if the API ever leaves the local network.

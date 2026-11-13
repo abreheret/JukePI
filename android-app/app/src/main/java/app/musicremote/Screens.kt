@@ -393,6 +393,7 @@ fun SearchScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
             r == null -> Text("Tape quelques lettres : la recherche ignore les accents.", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             r.albums.isEmpty() && r.artists.isEmpty() && r.tracks.isEmpty() -> Text("Aucun résultat.", Modifier.padding(16.dp))
             else -> LazyColumn(Modifier.fillMaxSize()) {
+                if (r.fuzzy) item { Text("Résultats approchants", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (r.artists.isNotEmpty()) {
                     item { SectionTitle("Artistes") }
                     items(r.artists, key = { "ar${it.name}" }) { a ->

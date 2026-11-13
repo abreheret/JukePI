@@ -35,7 +35,7 @@ Chaque dossier a son README, un document d'architecture et des notes de dévelop
 - **Aucun audio ne passe par le téléphone** quand on joue sur l'ampli : l'ampli va chercher les MP3 sur le Pi. Le téléphone est une télécommande.
 - Indexe des dizaines de milliers de MP3 en quelques minutes, se remet à jour en quelques secondes ; gère les tags brouillons, les compilations, les pochettes manquantes.
 - Pochettes du dossier de l'album ou intégrées aux fichiers, miniatures en cache ; recherche en ligne facultative (désactivée par défaut).
-- Recherche plein texte insensible aux accents, en environ 15 ms.
+- Recherche plein texte insensible aux accents, en environ 15 ms, tolérante aux fautes de frappe (« beatels » trouve The Beatles), une seule entrée par artiste quelle que soit l'orthographe.
 - Le serveur s'annonce en mDNS : l'appli le trouve sans saisir d'adresse.
 - Déplacement, coupure du son, volume et file d'attente pour l'ampli (HEOS n'a pas de commande de déplacement : le serveur relance le flux à la trame voulue).
 - **« Même style »** : quand la file arrive à son dernier titre, l'appli enchaîne sur des titres de ta bibliothèque qui y ressemblent (similarité Last.fm si elle est configurée, sinon tes genres), en favorisant les artistes que tu écoutes le plus. Ce que joue l'ampli peut être **scrobblé** sur ton compte Last.fm.
