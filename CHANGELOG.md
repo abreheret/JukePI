@@ -2,14 +2,26 @@
 
 🇫🇷 Le journal des modifications est en anglais ; la documentation existe en français (`*.fr.md`).
 
-## Unreleased
+## 0.2.0 - 2026-11-13
 
-- The amplifier now shows the title and artist of **every** track, not only the variable-bitrate ones: the Denon only reads the tag when the frame headers change, so constant-bitrate files get one silent 26 ms frame with a differing header half a second in. Accented titles are written as UTF-16.
-- The APK is signed with a real release key (certificate SHA-256 in `android-app/README.md`). Upgrading from v0.1.0, which is debug-signed, needs one uninstall.
-- `scripts/build-release.sh` signs with that key, refuses to publish a debug-signed APK and checks that no personal data or secret is in the files.
-- Suggestions come right after an album starts: 10 close tracks are appended to the queue, marked with a star and a "Suggestions" heading, so you can see and skip them; 10 more when the last track starts.
-- A "All albums of <artist>" button on the album page and on the full-screen player opens the artist's page.
-- The "Recent" tab shows the albums you listened to first (listening history kept by the server: `GET /albums?sort=listened`, `POST /history/played`, `DELETE /history`), then albums with a cover.
+### Upgrading
+- **The APK is now signed with the project's release key** (certificate SHA-256 in `android-app/README.md`). v0.1.0 was signed with a debug key, and Android refuses to install an app over one signed with another key: **uninstall v0.1.0 once** (this deletes the downloaded albums, which are downloaded again in a few seconds). Every later release updates in place.
+- The server needs no migration: the index gets its new columns and tables by itself, and the durations of the existing tracks are repaired once in the background (about 2.5 minutes for 40,000 tracks).
+
+### Added
+- **Suggestions behind what you play.** As soon as an album starts, 10 tracks of your library that are close to it are appended to the queue, marked with a star, the reason (Last.fm, same genre, same artist) and a "Suggestions" heading, so you can see and skip them; 10 more when the last track starts. A setting turns it off.
+- **"Recent" shows what you listened to** (history kept by the server: `GET /albums?sort=listened`, `POST /history/played`, `DELETE /history`), then albums with a cover.
+- **"All albums of this artist" button** on the album page and in the full-screen player.
+- **Typo-tolerant search** ("beatels" finds The Beatles, "acdc" finds AC/DC) and **one entry per artist** whatever the spelling ("Queen"/"QUEEN"). "Close matches" are labelled in the app.
+- `scripts/build-release.sh`: builds the release files, signs with the release key, refuses a debug-signed APK and checks that no personal data or secret is in the files.
+
+### Fixed
+- **The Denon shows the title and artist of every track**, not only the variable-bitrate ones. The Denon only reads the ID3 tag of a stream when it sees the MPEG frame headers change, which a constant-bitrate file never does: such files now get one silent 26 ms frame with a differing header half a second in. Titles without tags show their name without the track number and the artist is appended to the title line (the front panel only scrolls the title). Accented titles are written as UTF-16. Measured on the real Denon: every one of 22 files tested now shows its title.
+- Exact track lengths are read from the VBR header (the index announced 36 minutes for a 4 minute track).
+
+### Known limits
+- Developed and tested on a Raspberry Pi 4 and a Denon DRA-900H only. No authentication on the API (trusted local network). The amplifier shows the title 3 to 5 seconds after a track starts, and not the cover.
+- Not yet exercised end to end: output hand-over Denon <-> phone while playing, resuming a download interrupted by killing the app, a reboot of the Pi, a full `deploy.sh` run on a fresh Pi, installing the APK on a phone that never had the app.
 
 ## 0.1.0 - 2026-11-13
 

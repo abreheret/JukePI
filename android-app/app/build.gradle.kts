@@ -12,8 +12,8 @@ android {
         applicationId = "app.musicremote"
         minSdk = 34
         targetSdk = 37 // Android 17: local network access is blocked unless ACCESS_LOCAL_NETWORK is granted
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     // Release signing. Set JUKEPI_KEYSTORE (+ JUKEPI_KEYSTORE_PASSWORD, JUKEPI_KEY_ALIAS, JUKEPI_KEY_PASSWORD) to sign with

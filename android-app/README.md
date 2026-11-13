@@ -62,7 +62,7 @@ $ANDROID_HOME/platform-tools/adb install -r app/build/outputs/apk/debug/app-debu
 
 `./gradlew assembleRelease` gives a small, shrunk APK (`app/build/outputs/apk/release/app-release.apk`, about 5 MB). It is signed with **your own key** (kept outside the repository) when you set `JUKEPI_KEYSTORE`, `JUKEPI_KEYSTORE_PASSWORD` and, if needed, `JUKEPI_KEY_ALIAS` / `JUKEPI_KEY_PASSWORD`; otherwise with the local *debug* key, fine to try the app but never to publish. Use `./scripts/build-release.sh` from the repository root: it builds the files of a release and refuses to sign with the debug key.
 
-**Who signed which release.** v0.1.0 is signed with a debug key. From the next release the APKs are signed with the project's release key, whose certificate SHA-256 is:
+**Who signed which release.** v0.1.0 is signed with a debug key. From v0.2.0 the APKs are signed with the project's release key, whose certificate SHA-256 is:
 
 ```
 f94f4141db9d973553f30b77d4b2b5469af8c038b40c94dc606d7ba36f4e4b1c

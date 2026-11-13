@@ -64,7 +64,7 @@ curl -s localhost:8765/health ; curl -s localhost:8765/scan
 
 ## Découverte mDNS
 
-Vérifier depuis un Mac : `dns-sd -B _music-server._tcp local.` (liste) puis `dns-sd -L "Music Server" _music-server._tcp local.` (hôte, port, TXT). Résultat attendu : `raspberrypi-music.local.:8765`, `version=0.1.0 api=1 path=/`. Le multicast (UDP 5353) doit passer entre le téléphone et le Pi : même réseau local, pas de réseau « invité » isolé. Avahi (déjà présent) et le serveur cohabitent sur le port 5353 sans conflit.
+Vérifier depuis un Mac : `dns-sd -B _music-server._tcp local.` (liste) puis `dns-sd -L "Music Server" _music-server._tcp local.` (hôte, port, TXT). Résultat attendu : `raspberrypi-music.local.:8765`, `version=0.2.0 api=1 path=/`. Le multicast (UDP 5353) doit passer entre le téléphone et le Pi : même réseau local, pas de réseau « invité » isolé. Avahi (déjà présent) et le serveur cohabitent sur le port 5353 sans conflit.
 
 ## Activer les pochettes en ligne (vie privée)
 
