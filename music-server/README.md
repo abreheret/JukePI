@@ -70,8 +70,9 @@ All responses are JSON. No authentication: trusted local network only.
 | Request | Response |
 | --- | --- |
 | `GET /health` | `{"status":"ok"}` |
-| `GET /albums?limit=50&offset=0&sort=name\|artist\|recent\|random&q=text&artist=name` | `{total, limit, offset, items:[{id,name,artist,various_artists,year,track_count,has_cover,cover_path}]}` |
+| `GET /albums?limit=50&offset=0&sort=name\|artist\|recent\|listened\|random&q=text&artist=name` | `{total, limit, offset, items:[{id,name,artist,various_artists,year,track_count,has_cover,cover_path}]}` |
 | `GET /albums/{id}` | `{album, tracks:[{id,title,artist,genre,track_no,disc_no,year,duration_ms,stream_path}]}` |
+| `GET /albums?sort=listened` | the albums the user started, the latest first, then the others (those with a cover before those without, the most recently added first). The amplifier's plays are recorded by `POST /player/play` (the album of the track it starts on), the phone's are reported with `POST /history/played {"album_id":N}` (`204`). `DELETE /history` forgets everything. This is the app's "Recent" tab |
 | `GET /artists` | `{total, items:[{name, album_count}]}` (compilations excluded). The spellings of one artist ("Queen"/"QUEEN", "AC/DC"/"Ac-Dc") are merged: the most used one is shown, `album_count` counts all of them, and `/albums?artist=` answers to any of them |
 | `GET /tracks/{id}` | one track |
 | `GET /search?q=text&limit=10&types=albums,artists,tracks` | full-text search: `{query, albums, artists, tracks}`. Accent- and case-insensitive, every word is a prefix (`bea hel` finds *The Beatles – Help!*), ranked by relevance (title weighs more than artist, which weighs more than album). `limit` per section: 1–50 (default 10). Tracks also carry `album_name`. **Typo-tolerant**: when almost nothing is found (or no artist), close matches by edit distance are added after the exact ones ("beatels" finds *The Beatles*, "acdc" finds *AC/DC*) and `fuzzy` is `true` |

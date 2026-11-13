@@ -70,8 +70,9 @@ Toutes les réponses sont en JSON. Pas d'authentification : réseau local de con
 | Requête | Réponse |
 | --- | --- |
 | `GET /health` | `{"status":"ok"}` |
-| `GET /albums?limit=50&offset=0&sort=name\|artist\|recent\|random&q=texte&artist=nom` | `{total, limit, offset, items:[{id,name,artist,various_artists,year,track_count,has_cover,cover_path}]}` |
+| `GET /albums?limit=50&offset=0&sort=name\|artist\|recent\|listened\|random&q=texte&artist=nom` | `{total, limit, offset, items:[{id,name,artist,various_artists,year,track_count,has_cover,cover_path}]}` |
 | `GET /albums/{id}` | `{album, tracks:[{id,title,artist,genre,track_no,disc_no,year,duration_ms,stream_path}]}` |
+| `GET /albums?sort=listened` | les albums que l'utilisateur a lancés, le dernier d'abord, puis les autres (ceux avec pochette avant ceux sans, les plus récemment ajoutés d'abord). Les lectures sur l'ampli sont enregistrées par `POST /player/play` (l'album du titre de départ), celles du téléphone sont signalées par `POST /history/played {"album_id":N}` (`204`). `DELETE /history` oublie tout. C'est l'onglet « Récents » de l'appli |
 | `GET /artists` | `{total, items:[{name, album_count}]}` (hors compilations). Les orthographes d'un même artiste (« Queen »/« QUEEN », « AC/DC »/« Ac-Dc ») sont fusionnées : la plus utilisée est affichée, `album_count` les compte toutes, et `/albums?artist=` répond à n'importe laquelle |
 | `GET /tracks/{id}` | une piste |
 | `GET /search?q=texte&limit=10&types=albums,artists,tracks` | recherche plein texte : `{query, albums, artists, tracks}`. Insensible aux accents et à la casse, chaque mot est un préfixe (`bea hel` trouve *The Beatles – Help!*), classement par pertinence (le titre pèse plus que l'artiste, qui pèse plus que l'album). `limit` par rubrique : 1 à 50 (défaut 10). Les pistes portent en plus `album_name`. **Tolérante aux fautes de frappe** : quand presque rien n'est trouvé (ou aucun artiste), les résultats proches par distance d'édition s'ajoutent après les exacts (« beatels » trouve *The Beatles*, « acdc » trouve *AC/DC*) et `fuzzy` vaut `true` |

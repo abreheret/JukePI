@@ -17,7 +17,7 @@ Votre bibliothèque MP3 vit sur un Raspberry Pi. Le Pi l'indexe et la sert en HT
 
 ## Aperçu
 
-<table><tr><td align="center"><img src="docs/screenshots/albums.png?v=3" width="190" alt="Albums"><br><sub>Albums</sub></td><td align="center"><img src="docs/screenshots/album.png?v=2" width="190" alt="Album"><br><sub>Album</sub></td><td align="center"><img src="docs/screenshots/search.png?v=2" width="190" alt="Recherche"><br><sub>Recherche</sub></td><td align="center"><img src="docs/screenshots/player.png?v=2" width="190" alt="Lecture en cours"><br><sub>Lecture en cours</sub></td><td align="center"><img src="docs/screenshots/downloaded.png?v=2" width="190" alt="Téléchargés"><br><sub>Téléchargés</sub></td></tr></table>
+<table><tr><td align="center"><img src="docs/screenshots/albums.png?v=4" width="190" alt="Albums"><br><sub>Albums</sub></td><td align="center"><img src="docs/screenshots/album.png?v=2" width="190" alt="Album"><br><sub>Album</sub></td><td align="center"><img src="docs/screenshots/search.png?v=2" width="190" alt="Recherche"><br><sub>Recherche</sub></td><td align="center"><img src="docs/screenshots/player.png?v=2" width="190" alt="Lecture en cours"><br><sub>Lecture en cours</sub></td><td align="center"><img src="docs/screenshots/downloaded.png?v=2" width="190" alt="Téléchargés"><br><sub>Téléchargés</sub></td></tr></table>
 
 Captures de l'appli Android. Les pochettes appartiennent à leurs ayants droit et ne sont montrées qu'à titre d'illustration.
 

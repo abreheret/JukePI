@@ -103,6 +103,9 @@ class Api(val base: String) {
             json.decodeFromString<Recommendations>(it)
         }
 
+    /** Tell the server an album was started on the phone (the amplifier's are recorded by the server itself). */
+    suspend fun markPlayed(albumId: Long) = post("/history/played", buildJsonObject { put("album_id", albumId) })
+
     suspend fun player(): PlayerSnapshot = get("/player") { json.decodeFromString<PlayerSnapshot>(it) }
 
     /**

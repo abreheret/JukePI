@@ -17,7 +17,7 @@ Your MP3 library lives on a Raspberry Pi. The Pi indexes it and serves it over H
 
 ## Preview
 
-<table><tr><td align="center"><img src="docs/screenshots/albums.png?v=3" width="190" alt="Albums"><br><sub>Albums</sub></td><td align="center"><img src="docs/screenshots/album.png?v=2" width="190" alt="Album"><br><sub>Album</sub></td><td align="center"><img src="docs/screenshots/search.png?v=2" width="190" alt="Search"><br><sub>Search</sub></td><td align="center"><img src="docs/screenshots/player.png?v=2" width="190" alt="Now playing"><br><sub>Now playing</sub></td><td align="center"><img src="docs/screenshots/downloaded.png?v=2" width="190" alt="Downloaded"><br><sub>Downloaded</sub></td></tr></table>
+<table><tr><td align="center"><img src="docs/screenshots/albums.png?v=4" width="190" alt="Albums"><br><sub>Albums</sub></td><td align="center"><img src="docs/screenshots/album.png?v=2" width="190" alt="Album"><br><sub>Album</sub></td><td align="center"><img src="docs/screenshots/search.png?v=2" width="190" alt="Search"><br><sub>Search</sub></td><td align="center"><img src="docs/screenshots/player.png?v=2" width="190" alt="Now playing"><br><sub>Now playing</sub></td><td align="center"><img src="docs/screenshots/downloaded.png?v=2" width="190" alt="Downloaded"><br><sub>Downloaded</sub></td></tr></table>
 
 Screenshots of the Android app (the interface is currently in French). Album covers belong to their respective owners and are shown for illustration only.
 

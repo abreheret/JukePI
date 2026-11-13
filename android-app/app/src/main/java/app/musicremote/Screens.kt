@@ -45,7 +45,8 @@ private fun ErrorBox(text: String, onRetry: () -> Unit) {
 // ---------------------------------------------------------------------------------------------
 // Albums grid (home tab, and the albums of one artist)
 
-private val SORTS = listOf("recent" to "Récents", "name" to "A–Z", "artist" to "Artiste", "random" to "Au hasard")
+// "listened": what was played first (the latest first), then the albums with a cover, the newest first.
+private val SORTS = listOf("listened" to "Récents", "name" to "A–Z", "artist" to "Artiste", "random" to "Au hasard")
 
 /** Is an album on the phone? Done = every track, Partial = some (an interrupted download). */
 private enum class Stored { None, Partial, Done }
@@ -59,7 +60,7 @@ private fun storedStates(): Map<Long, Stored> {
 @Composable
 fun AlbumsScreen(vm: AppViewModel, artist: String?, modifier: Modifier = Modifier) {
     val server by vm.server.collectAsState()
-    var sort by rememberSaveable(artist) { mutableStateOf(if (artist == null) "recent" else "name") }
+    var sort by rememberSaveable(artist) { mutableStateOf(if (artist == null) "listened" else "name") }
     var seed by rememberSaveable { mutableIntStateOf(0) }
     val api = vm.api
     Column(modifier) {

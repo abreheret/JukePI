@@ -286,11 +286,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun playAlbum(detail: AlbumDetail, start: Int) {
-        if (phoneMode) playOnPhone(detail.tracks, start) else act { playAlbum(detail.album.id, start) }
+        if (phoneMode) { playOnPhone(detail.tracks, start); markPlayed(detail.album.id) } else act { playAlbum(detail.album.id, start) }
     }
 
     fun playTrack(t: Track) {
-        if (phoneMode) playOnPhone(listOf(t), 0) else act { playTracks(listOf(t.id)) }
+        if (phoneMode) { playOnPhone(listOf(t), 0); markPlayed(t.albumId) } else act { playTracks(listOf(t.id)) }
+    }
+
+    /** "Récents" is what was listened to: the server records the amplifier's plays, the phone reports its own. Best effort. */
+    private fun markPlayed(albumId: Long) {
+        val a = api ?: return
+        if (PlayerRepository.server.value != Server.Online) return
+        viewModelScope.launch { try { a.markPlayed(albumId) } catch (e: CancellationException) { throw e } catch (_: Exception) { } }
     }
 
     private fun playOnPhone(tracks: List<Track>, start: Int) {

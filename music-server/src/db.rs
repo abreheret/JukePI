@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS album_covers(
   checked_at INTEGER NOT NULL DEFAULT 0,
   online_checked_at INTEGER NOT NULL DEFAULT 0
 );
+-- Albums the user started (the last time and how many times): the Recent tab of the app. Cleared with DELETE /history.
+CREATE TABLE IF NOT EXISTS album_plays(
+  album_id INTEGER PRIMARY KEY,
+  played_at INTEGER NOT NULL,
+  plays INTEGER NOT NULL DEFAULT 1
+);
 -- Listens waiting to be sent to Last.fm (scrobble.rs). Emptied as soon as they are accepted.
 CREATE TABLE IF NOT EXISTS scrobble_queue(
   id INTEGER PRIMARY KEY AUTOINCREMENT,

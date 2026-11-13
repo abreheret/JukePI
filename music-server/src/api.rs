@@ -34,6 +34,8 @@ pub fn router(state: AppState) -> Router {
         .route("/tracks/{id}", get(track))
         .route("/search", get(search_handler))
         .route("/recommendations", get(recommendations))
+        .route("/history", axum::routing::delete(history_clear))
+        .route("/history/played", post(history_played))
         .route("/lastfm", get(lastfm_status))
         .route("/lastfm/auth/start", post(lastfm_auth_start))
         .route("/lastfm/auth/finish", post(lastfm_auth_finish))
@@ -117,6 +119,38 @@ struct AlbumsQuery {
     artist: Option<String>,
 }
 
+/// `sort=listened`: the albums the user started, the latest first; then the others, those with a cover before those
+/// without (a grid of grey squares is no way to start), the most recently added first.
+const LISTENED_ORDER: &str = "p.played_at IS NULL, p.played_at DESC, (c.kind IS NULL OR c.kind = 'none'), added_at DESC, albums.id DESC";
+
+/// Remember that the user started this album now.
+fn record_play(c: &Connection, album_id: i64) -> rusqlite::Result<()> {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    c.execute(
+        "INSERT INTO album_plays(album_id, played_at, plays) SELECT id, ?2, 1 FROM albums WHERE id=?1
+         ON CONFLICT(album_id) DO UPDATE SET played_at=excluded.played_at, plays=plays+1",
+        params![album_id, now],
+    )?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct PlayedBody {
+    album_id: i64,
+}
+
+/// The app tells the server which album it started on the phone (the amplifier's are recorded by `/player/play`).
+async fn history_played(State(st): State<AppState>, Json(b): Json<PlayedBody>) -> ApiResult<StatusCode> {
+    with_db(&st, move |c| Ok(record_play(c, b.album_id)?)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Forget what was listened to ("Recent" goes back to the recently added albums).
+async fn history_clear(State(st): State<AppState>) -> ApiResult<StatusCode> {
+    with_db(&st, |c| Ok(c.execute("DELETE FROM album_plays", []).map(|_| ())?)).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn album_json(r: &rusqlite::Row) -> rusqlite::Result<Json_> {
     let artist_count: i64 = r.get("artist_count")?;
     let has_cover = r.get::<_, i64>("has_cover")? != 0;
@@ -140,6 +174,7 @@ async fn albums(State(st): State<AppState>, Query(q): Query<AlbumsQuery>) -> Api
         "artist" => "artist COLLATE NOCASE, name COLLATE NOCASE, id",
         "recent" => "added_at DESC, id DESC",
         "random" => "RANDOM()",
+        "listened" => LISTENED_ORDER,
         other => return Err(ApiError::BadRequest(format!("unknown sort '{other}'"))),
     };
     with_db(&st, move |c| {
@@ -165,7 +200,7 @@ async fn albums(State(st): State<AppState>, Query(q): Query<AlbumsQuery>) -> Api
         args.push(Value::Integer(offset));
         let mut st = c.prepare(&format!(
             "SELECT albums.id AS id, name, artist, artist_count, year, track_count, (c.kind IS NOT NULL AND c.kind <> 'none') AS has_cover
-             FROM albums LEFT JOIN album_covers c ON c.album_id = albums.id
+             FROM albums LEFT JOIN album_covers c ON c.album_id = albums.id LEFT JOIN album_plays p ON p.album_id = albums.id
              WHERE {where_sql} ORDER BY {order} LIMIT ? OFFSET ?"
         ))?;
         let items = st
@@ -463,6 +498,10 @@ async fn player_play(State(st): State<AppState>, Json(body): Json<PlayBody>) -> 
         load_items(c, &ids)
     })
     .await?;
+    // The album the user started counts as listened (one per action, not every album of a handed-over queue).
+    if let Some(album) = items.get(start).or(items.last()).map(|i| i.album_id) {
+        let _ = with_db(&st, move |c| Ok(record_play(c, album)?)).await;
+    }
     st.player.send(Cmd::Play { items, start }).await?;
     Ok((StatusCode::ACCEPTED, Json(st.player.snapshot())))
 }
@@ -870,4 +909,39 @@ async fn seek_stream(State(st): State<AppState>, Path((id, file)): Path<(i64, St
     let (tag, _) = with_db(&st, move |c| tag_for(c, id)).await?;
     tracing::info!("seek stream: track {id} from {ms} ms -> frame at {} ms, byte {}", point.actual_ms, point.byte_offset);
     tagged_audio(&full, tag, point.byte_offset, false).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recent_means_listened_first_then_covered_albums() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(db::SCHEMA).unwrap();
+        // id, added_at: 1 old, 2 newer but without cover, 3, 4 the newest
+        for (id, added) in [(1, 10), (2, 30), (3, 20), (4, 40)] {
+            c.execute("INSERT INTO albums(id, dir, dir_name, name, added_at) VALUES(?1, ?2, ?2, ?2, ?3)", params![id, format!("d{id}"), added]).unwrap();
+        }
+        for id in [1, 3, 4] {
+            c.execute("INSERT INTO album_covers(album_id, kind) VALUES(?1, 'file')", params![id]).unwrap();
+        }
+        c.execute("INSERT INTO album_covers(album_id, kind) VALUES(2, 'none')", []).unwrap();
+        let order = |c: &Connection| -> Vec<i64> {
+            let sql = format!(
+                "SELECT albums.id FROM albums LEFT JOIN album_covers c ON c.album_id = albums.id LEFT JOIN album_plays p ON p.album_id = albums.id ORDER BY {LISTENED_ORDER}"
+            );
+            c.prepare(&sql).unwrap().query_map([], |r| r.get(0)).unwrap().collect::<Result<_, _>>().unwrap()
+        };
+        assert_eq!(order(&c), vec![4, 3, 1, 2], "nothing listened: recently added with a cover first, no cover last");
+        c.execute("INSERT INTO album_plays(album_id, played_at) VALUES(1, 100), (3, 200)", []).unwrap();
+        assert_eq!(order(&c), vec![3, 1, 4, 2], "listened first, the latest first");
+        record_play(&c, 1).unwrap();
+        let (t, n): (i64, i64) = c.query_row("SELECT played_at, plays FROM album_plays WHERE album_id=1", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert!(t > 200 && n == 2, "playing again moves it to the top and counts");
+        assert_eq!(order(&c)[0], 1);
+        record_play(&c, 999).unwrap(); // unknown album: ignored
+        let n: i64 = c.query_row("SELECT COUNT(*) FROM album_plays", [], |r| r.get(0)).unwrap();
+        assert_eq!(n, 2);
+    }
 }
