@@ -10,10 +10,12 @@ fn syncsafe(n: usize) -> [u8; 4] {
     [((n >> 21) & 0x7f) as u8, ((n >> 14) & 0x7f) as u8, ((n >> 7) & 0x7f) as u8, (n & 0x7f) as u8]
 }
 
-/// One text frame. ISO-8859-1 when every character fits, UTF-16 with a BOM otherwise.
+/// One text frame. Plain ASCII is written as ISO-8859-1 (which every reader gets right); anything else, accents
+/// included, as UTF-16 with a BOM. An accented text in ISO-8859-1 is read as UTF-8 by some players, which then drop
+/// the whole tag (the Denon showed `Url Stream` for "Noir Désir").
 fn text_frame(id: &str, text: &str) -> Vec<u8> {
     let mut body: Vec<u8> = vec![];
-    if text.chars().all(|c| (c as u32) <= 0xFF) {
+    if text.is_ascii() {
         body.push(0);
         body.extend(text.chars().map(|c| c as u8));
     } else {
@@ -138,10 +140,15 @@ mod tests {
     }
 
     #[test]
-    fn accents_stay_latin1_and_other_scripts_use_utf16() {
-        let t = build_tag("Très haut", None, Some("Мир 平和"));
-        assert_eq!(read_frames(&t), vec![("TIT2".into(), "Très haut".into()), ("TALB".into(), "Мир 平和".into())]);
-        assert_eq!(t[10 + 10], 0, "the title is ISO-8859-1");
+    fn ascii_stays_latin1_and_everything_else_uses_utf16() {
+        let t = build_tag("Très haut", Some("Noir Désir"), Some("Мир 平和"));
+        assert_eq!(
+            read_frames(&t),
+            vec![("TIT2".into(), "Très haut".into()), ("TPE1".into(), "Noir Désir".into()), ("TALB".into(), "Мир 平和".into())]
+        );
+        assert_eq!(t[10 + 10], 1, "an accented title is UTF-16, not ISO-8859-1");
+        let plain = build_tag("Come Together", Some("The Beatles"), None);
+        assert_eq!(plain[10 + 10], 0, "plain ASCII stays ISO-8859-1");
     }
 
     #[test]

@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+- The amplifier now shows the title and artist of **every** track, not only the variable-bitrate ones: the Denon only reads the tag when the frame headers change, so constant-bitrate files get one silent 26 ms frame with a differing header half a second in. Accented titles are written as UTF-16.
+- The APK is signed with a real release key (certificate SHA-256 in `android-app/README.md`). Upgrading from v0.1.0, which is debug-signed, needs one uninstall.
+- `scripts/build-release.sh` signs with that key, refuses to publish a debug-signed APK and checks that no personal data or secret is in the files.
 - Suggestions come right after an album starts: 10 close tracks are appended to the queue, marked with a star and a "Suggestions" heading, so you can see and skip them; 10 more when the last track starts.
 - A "All albums of <artist>" button on the album page and on the full-screen player opens the artist's page.
 - The "Recent" tab shows the albums you listened to first (listening history kept by the server: `GET /albums?sort=listened`, `POST /history/played`, `DELETE /history`), then albums with a cover.

@@ -95,7 +95,18 @@ After the first deployment that brings covers, the scan resolves all albums (one
 
 ## Building the release files
 
-`./scripts/build-release.sh` (from the repository root) builds the server binary for the Pi and the APK into `dist/` and writes `SHA256SUMS`. The binary is built with the paths of your machine remapped, and the script then scans both files for your user name, home folder, git e-mail and any exported `LASTFM_*` secret, and stops if it finds one. Check the files it produces before attaching them to a release: they must not contain anything of yours.
+`./scripts/build-release.sh` (from the repository root) builds the server binary for the Pi and the APK into `dist/` and writes `SHA256SUMS`. The binary is built with the paths of your machine remapped, and the script then scans both files for your user name, home folder, git e-mail, signing password and any exported `LASTFM_*` secret, and stops if it finds one (it names what it found, never the value). Check the files it produces before attaching them to a release: they must not contain anything of yours. It also checks that the APK is signed with the release key and prints the certificate digest.
+
+**The release key** (once, in a Terminal window of your own, so the password never goes through a chat or a log):
+
+```bash
+mkdir -p ~/.jukepi && chmod 700 ~/.jukepi
+keytool -genkeypair -v -keystore ~/.jukepi/release.jks -alias jukepi -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=JukePI"
+chmod 600 ~/.jukepi/release.jks
+security add-generic-password -a "$USER" -s jukepi-release-keystore -w    # macOS Keychain: the script reads the password there
+```
+
+(Elsewhere than macOS: export `JUKEPI_KEYSTORE_PASSWORD`, and `JUKEPI_KEYSTORE` if the file is not `~/.jukepi/release.jks`.) **Back up `release.jks` and its password** (a password manager, another disk): without them nobody can update the app any more, and it would have to be republished under another name. Never commit them: `*.jks` is git-ignored. Publish the certificate digest (`apksigner verify --print-certs`) so users can check where an APK comes from; it is in the Android README.
 
 ## Troubleshooting
 

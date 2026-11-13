@@ -95,7 +95,18 @@ Après le premier déploiement qui apporte les pochettes, le scan résout tous l
 
 ## Construire les fichiers d'une release
 
-`./scripts/build-release.sh` (depuis la racine du dépôt) construit le binaire du serveur pour le Pi et l'APK dans `dist/` et écrit `SHA256SUMS`. Le binaire est compilé avec les chemins de votre machine masqués, puis le script cherche dans les deux fichiers votre nom d'utilisateur, votre dossier personnel, votre e-mail git et tout secret `LASTFM_*` exporté, et s'arrête s'il en trouve. Vérifiez les fichiers produits avant de les joindre à une release : ils ne doivent rien contenir de vous.
+`./scripts/build-release.sh` (depuis la racine du dépôt) construit le binaire du serveur pour le Pi et l'APK dans `dist/` et écrit `SHA256SUMS`. Le binaire est compilé avec les chemins de votre machine masqués, puis le script cherche dans les deux fichiers votre nom d'utilisateur, votre dossier personnel, votre e-mail git, le mot de passe de signature et tout secret `LASTFM_*` exporté, et s'arrête s'il en trouve (il nomme ce qu'il a trouvé, jamais la valeur). Vérifiez les fichiers produits avant de les joindre à une release : ils ne doivent rien contenir de vous. Il vérifie aussi que l'APK est signé avec la clé de release et affiche l'empreinte du certificat.
+
+**La clé de release** (une seule fois, dans une fenêtre Terminal à vous, pour que le mot de passe ne passe ni par un chat ni par un journal) :
+
+```bash
+mkdir -p ~/.jukepi && chmod 700 ~/.jukepi
+keytool -genkeypair -v -keystore ~/.jukepi/release.jks -alias jukepi -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=JukePI"
+chmod 600 ~/.jukepi/release.jks
+security add-generic-password -a "$USER" -s jukepi-release-keystore -w    # trousseau macOS : le script y lit le mot de passe
+```
+
+(Ailleurs que sur macOS : exporter `JUKEPI_KEYSTORE_PASSWORD`, et `JUKEPI_KEYSTORE` si le fichier n'est pas `~/.jukepi/release.jks`.) **Sauvegardez `release.jks` et son mot de passe** (gestionnaire de mots de passe, autre disque) : sans eux, plus personne ne peut mettre l'appli à jour, il faudrait la republier sous un autre nom. Ne les commitez jamais : `*.jks` est ignoré par git. Publiez l'empreinte du certificat (`apksigner verify --print-certs`) pour que les utilisateurs vérifient l'origine d'un APK ; elle figure dans le README de l'appli Android.
 
 ## Dépannage
 

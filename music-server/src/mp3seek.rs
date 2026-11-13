@@ -106,6 +106,74 @@ fn parse_header_frame(buf: &[u8]) -> Option<HeaderFrame> {
     Some(HeaderFrame { len: frame.len, duration_ms })
 }
 
+/// Frames walked to decide whether a stream is constant bitrate and where to put the nudge.
+const NUDGE_MAX_FRAMES: usize = 200;
+/// The nudge goes after at least this many frames (about half a second): earlier, the Denon does not react.
+const NUDGE_MIN_FRAMES: usize = 20;
+
+/// The Denon shows the title of a stream only when it sees the frame headers change, which a constant-bitrate (CBR)
+/// file never does (measured: 14 of 15 files, all the CBR ones showed `Url Stream`, all the VBR ones their title).
+/// One 26 ms silent frame whose header differs (other bitrate AND the opposite CRC flag: a bitrate change alone did
+/// not work) makes a CBR file show it. `audio` is the start of the audio (frame aligned).
+/// Returns where to insert (a frame boundary) and the silent frame, or `None` for a stream too short or unreadable.
+/// It is put in VBR streams too: one of them (the only one in the sample) showed `Url Stream` without it.
+/// The frame goes where the next real frame does not reach back into the previous ones (its `main_data_begin` is 0),
+/// so no sound is damaged.
+pub fn bitrate_nudge(audio: &[u8]) -> Option<(usize, Vec<u8>)> {
+    let mut pos = 0usize;
+    let mut frames = 0usize;
+    let mut choice: Option<(usize, [u8; 4])> = None;
+    while frames < NUDGE_MAX_FRAMES && pos + 6 <= audio.len() {
+        let h = [audio[pos], audio[pos + 1], audio[pos + 2], audio[pos + 3]];
+        let f = parse_header(h)?;
+        if choice.is_none() && frames >= NUDGE_MIN_FRAMES {
+            // main_data_begin: first 9 bits of the side information (8 bits for MPEG 2 and 2.5), after the CRC if any
+            let si = pos + 4 + if h[1] & 1 == 0 { 2 } else { 0 };
+            let mdb = if (h[1] >> 3) & 3 == 3 { ((audio[si] as u16) << 1) | (audio[si + 1] as u16 >> 7) } else { audio[si] as u16 };
+            if mdb == 0 {
+                choice = Some((pos, h));
+            }
+        }
+        pos += f.len as usize;
+        frames += 1;
+    }
+    if frames < NUDGE_MIN_FRAMES + 2 {
+        return None; // too short to bother
+    }
+    // No frame without back-reference found: put it after the minimum anyway (a glitch of one frame at worst).
+    let (at, h) = match choice {
+        Some(c) => c,
+        None => {
+            let mut p = 0usize;
+            for _ in 0..NUDGE_MIN_FRAMES {
+                p += parse_header([audio[p], audio[p + 1], audio[p + 2], audio[p + 3]])?.len as usize;
+            }
+            (p, [audio[p], audio[p + 1], audio[p + 2], audio[p + 3]])
+        }
+    };
+    Some((at, silent_frame_like(h)?))
+}
+
+/// A Layer III frame of silence (all-zero payload) with the version, sample rate and channel mode of `h`, at another
+/// bitrate (the lowest, or the next one when `h` already uses it), with the opposite protection (CRC) bit: a frame
+/// whose header differs in two ways, which is what the Denon reacts to. No padding.
+fn silent_frame_like(h: [u8; 4]) -> Option<Vec<u8>> {
+    let version = (h[1] >> 3) & 3;
+    let rate_index = ((h[2] >> 2) & 3) as usize;
+    let current = h[2] >> 4;
+    let index = if current == 1 { 2u8 } else { 1u8 };
+    let (bitrate, sample_rate, coeff) = match version {
+        3 => (BITRATES_V1_L3[index as usize], [44100u32, 48000, 32000].get(rate_index).copied()?, 144u64),
+        2 => (BITRATES_V2_L3[index as usize], [22050u32, 24000, 16000].get(rate_index).copied()?, 72u64),
+        0 => (BITRATES_V2_L3[index as usize], [11025u32, 12000, 8000].get(rate_index).copied()?, 72u64),
+        _ => return None,
+    };
+    let len = (coeff * bitrate as u64 * 1000 / sample_rate as u64) as usize;
+    let mut f = vec![0u8; len];
+    f[..4].copy_from_slice(&[h[0], h[1] ^ 1, (index << 4) | (h[2] & 0x0D), h[3]]);
+    Some(f)
+}
+
 /// Where the real audio of a file starts: after its ID3v2 tag and, with `skip_header_frame`, after the Xing / Info
 /// header frame too. The Denon does not show the tags of a stream that starts with such a header frame (seen with a
 /// Lavf-encoded file: `Url Stream`, while the same file without that frame shows them) and does not need it to play.
@@ -184,6 +252,56 @@ mod tests {
         f[40..44].copy_from_slice(&1u32.to_be_bytes());
         f[44..48].copy_from_slice(&frames.to_be_bytes());
         f
+    }
+
+    /// `n` MPEG1 frames at `index` (bitrate index); frame `reaching` gets a non-zero main_data_begin.
+    fn cbr_audio(n: usize, index: u8, reaching: &[usize]) -> Vec<u8> {
+        let len = 144 * BITRATES_V1_L3[index as usize] as usize * 1000 / 44100;
+        let mut out = vec![];
+        for i in 0..n {
+            let mut f = vec![0u8; len];
+            f[..4].copy_from_slice(&[0xFF, 0xFB, index << 4, 0x44]); // MPEG1 L3, 44.1 kHz, no CRC, joint stereo
+            if reaching.contains(&i) {
+                f[4] = 0x20; // main_data_begin = 64: reaches into the previous frames
+            }
+            out.extend(f);
+        }
+        out
+    }
+
+    #[test]
+    fn a_constant_bitrate_stream_gets_one_silent_frame_after_half_a_second() {
+        let audio = cbr_audio(100, 9, &[]); // 128 kbps, 417 bytes
+        let (at, frame) = bitrate_nudge(&audio).expect("CBR");
+        assert_eq!(at, NUDGE_MIN_FRAMES * 417, "after 20 frames, on a frame boundary");
+        assert_eq!(frame.len(), 144 * 32 * 1000 / 44100, "32 kbps");
+        assert_eq!(&frame[..4], &[0xFF, 0xFA, 0x10, 0x44], "same version, rate and channel mode, other bitrate, opposite CRC flag");
+        assert!(frame[4..].iter().all(|b| *b == 0), "silence");
+        assert!(parse_header([frame[0], frame[1], frame[2], frame[3]]).is_some());
+    }
+
+    #[test]
+    fn the_nudge_avoids_frames_that_reach_back_and_works_for_every_bitrate() {
+        let audio = cbr_audio(100, 9, &[20, 21, 22]);
+        let (at, _) = bitrate_nudge(&audio).unwrap();
+        assert_eq!(at, 23 * 417, "frames 20 to 22 reach into the previous ones: it goes before frame 23");
+        // frames that carry a CRC get a nudge without one
+        let mut crc = cbr_audio(100, 9, &[]);
+        for i in 0..100 {
+            crc[i * 417 + 1] = 0xFA;
+        }
+        let (_, f) = bitrate_nudge(&crc).unwrap();
+        assert_eq!(f[1], 0xFB);
+        // a stream already at 32 kbps gets 40 kbps
+        let (_, f32k) = bitrate_nudge(&cbr_audio(100, 1, &[])).unwrap();
+        assert_eq!(f32k[2] >> 4, 2);
+        // a VBR stream (two bitrates) gets it too
+        let mut vbr = cbr_audio(30, 9, &[]);
+        vbr.extend(cbr_audio(30, 11, &[]));
+        assert_eq!(bitrate_nudge(&vbr).unwrap().0, 20 * 417);
+        // too short, or not audio
+        assert!(bitrate_nudge(&cbr_audio(10, 9, &[])).is_none());
+        assert!(bitrate_nudge(b"not an mp3 at all, just text").is_none());
     }
 
     #[test]

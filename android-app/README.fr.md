@@ -60,7 +60,15 @@ $ANDROID_HOME/platform-tools/adb install -r app/build/outputs/apk/debug/app-debu
 
 ## Build de release
 
-`./gradlew assembleRelease` donne un APK réduit et léger (`app/build/outputs/apk/release/app-release.apk`, environ 5 Mo). Pour le signer avec **votre propre clé** (gardée hors du dépôt), définir `JUKEPI_KEYSTORE`, `JUKEPI_KEYSTORE_PASSWORD` et, au besoin, `JUKEPI_KEY_ALIAS` / `JUKEPI_KEY_PASSWORD`. Sans elles il est signé avec la clé de *debug* locale : suffisant pour essayer l'appli, mais une appli signée avec une autre clé ne peut pas s'installer par-dessus (désinstaller d'abord : cela supprime les albums téléchargés). Les APK joints à une release GitHub sont signés en debug pour l'instant.
+`./gradlew assembleRelease` donne un APK réduit et léger (`app/build/outputs/apk/release/app-release.apk`, environ 5 Mo). Il est signé avec **votre propre clé** (gardée hors du dépôt) quand vous définissez `JUKEPI_KEYSTORE`, `JUKEPI_KEYSTORE_PASSWORD` et, au besoin, `JUKEPI_KEY_ALIAS` / `JUKEPI_KEY_PASSWORD` ; sinon avec la clé de *debug* locale, suffisante pour essayer l'appli mais jamais pour publier. Utilisez `./scripts/build-release.sh` depuis la racine du dépôt : il construit les fichiers d'une release et refuse de signer avec la clé de debug.
+
+**Qui a signé quelle release.** La v0.1.0 est signée avec une clé de debug. À partir de la prochaine release, les APK sont signés avec la clé de release du projet, dont le SHA-256 du certificat est :
+
+```
+f94f4141db9d973553f30b77d4b2b5469af8c038b40c94dc606d7ba36f4e4b1c
+```
+
+Vérifiez un fichier téléchargé avec `apksigner verify --print-certs JukePI-*.apk` (il affiche `CN=JukePI` et cette empreinte). Android refuse d'installer une appli par-dessus une autre signée avec une autre clé : **passer de la v0.1.0 demande une désinstallation** (elle efface les albums téléchargés, qui se re-téléchargent en quelques secondes). Ensuite, chaque release se met à jour sur place.
 
 ## Versions (novembre 2026)
 

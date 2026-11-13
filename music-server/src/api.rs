@@ -853,6 +853,9 @@ fn tag_for(c: &Connection, id: i64) -> ApiResult<(Vec<u8>, bool)> {
     })
 }
 
+/// Audio read ahead to decide where the nudge goes (about 150 frames at 128 kbps).
+const NUDGE_WINDOW: u64 = 96 * 1024;
+
 /// The audio of `full` from `start_byte` (past any tag the file starts with), behind a freshly built tag. The Denon
 /// shows what is in the tag; the file's own is often empty. No `Range`: the amplifier does not use it.
 async fn tagged_audio(full: &std::path::Path, tag: Vec<u8>, start_byte: u64, skip_header_frame: bool) -> ApiResult<Response> {
@@ -876,9 +879,22 @@ async fn tagged_audio(full: &std::path::Path, tag: Vec<u8>, start_byte: u64, ski
     }
     f.seek(std::io::SeekFrom::Start(start)).await.map_err(internal)?;
     let remaining = len.saturating_sub(start);
-    let total = tag.len() as u64 + remaining;
-    let head = tokio_stream::once(Ok::<axum::body::Bytes, std::io::Error>(axum::body::Bytes::from(tag)));
-    let body = axum::body::Body::from_stream(head.chain(tokio_util::io::ReaderStream::new(f.take(remaining))));
+    // The first stretch of audio is read to look at the bitrate: the Denon only shows the title of a stream whose
+    // bitrate changes, so a constant-bitrate stream gets one silent frame of another bitrate after half a second.
+    let mut prefix = vec![0u8; remaining.min(NUDGE_WINDOW) as usize];
+    f.read_exact(&mut prefix).await.map_err(internal)?;
+    let mut head = tag;
+    match crate::mp3seek::bitrate_nudge(&prefix) {
+        Some((at, silent)) => {
+            head.extend_from_slice(&prefix[..at]);
+            head.extend_from_slice(&silent);
+            head.extend_from_slice(&prefix[at..]);
+        }
+        None => head.extend_from_slice(&prefix),
+    }
+    let total = head.len() as u64 + (remaining - prefix.len() as u64);
+    let head = tokio_stream::once(Ok::<axum::body::Bytes, std::io::Error>(axum::body::Bytes::from(head)));
+    let body = axum::body::Body::from_stream(head.chain(tokio_util::io::ReaderStream::new(f.take(remaining - prefix.len() as u64))));
     Ok(Response::builder()
         .header(CONTENT_TYPE, "audio/mpeg")
         .header(CONTENT_LENGTH, total)
