@@ -58,4 +58,4 @@ Fonctionne et sert au quotidien sur l'installation de l'auteur (une bibliothèqu
 
 ## Licence et marques
 
-Aucune licence n'a encore été choisie : ajoutez un fichier `LICENSE` avant que d'autres réutilisent le code. *Denon* et *HEOS* sont des marques de leurs propriétaires ; ce projet est indépendant et n'est ni affilié à eux ni approuvé par eux.
+Publié sous [licence MIT](LICENSE). *Denon* et *HEOS* sont des marques de leurs propriétaires ; ce projet est indépendant et n'est ni affilié à eux ni approuvé par eux.

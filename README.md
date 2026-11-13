@@ -58,4 +58,4 @@ Working and used day to day on the author's setup (a 43,794-track library, a Pi 
 
 ## Licence and trademarks
 
-No licence has been chosen yet: add a `LICENSE` file before others reuse the code. *Denon* and *HEOS* are trademarks of their respective owners; this project is independent and not affiliated with or endorsed by them.
+Released under the [MIT licence](LICENSE). *Denon* and *HEOS* are trademarks of their respective owners; this project is independent and not affiliated with or endorsed by them.
