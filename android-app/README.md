@@ -54,6 +54,10 @@ $ANDROID_HOME/platform-tools/adb install -r app/build/outputs/apk/debug/app-debu
 
 `JAVA_HOME` must point at **JDK 21**: Homebrew's `gradle` starts on a newer JDK than the Android plugin accepts. The phone needs **USB debugging** enabled and the computer authorised (`adb devices` must show `device`).
 
+## Release build
+
+`./gradlew assembleRelease` gives a small, shrunk APK (`app/build/outputs/apk/release/app-release.apk`, about 5 MB). To sign it with **your own key** (kept outside the repository) set `JUKEPI_KEYSTORE`, `JUKEPI_KEYSTORE_PASSWORD` and, if needed, `JUKEPI_KEY_ALIAS` / `JUKEPI_KEY_PASSWORD`. Without them it is signed with the local *debug* key: fine to try the app, but an app signed with another key cannot be installed over it (uninstall first: this deletes the downloaded albums). The APKs attached to a GitHub release are debug-signed for now.
+
 ## Versions (as of November 2026)
 
 Android Gradle Plugin 9.5.1 (built-in Kotlin), Kotlin 2.4.21 (Compose and serialization plugins), Gradle 9.9.1, Compose BOM 2026.09.00, OkHttp 5.5.1 (+ okhttp-sse), kotlinx.serialization 1.13.0, Coil 3.6.3, Media3 1.11.1 (session + ExoPlayer), WorkManager 2.12.0, `compileSdk` 37, `targetSdk` 37, `minSdk` 34 (gives `NsdManager.registerServiceInfoCallback`).

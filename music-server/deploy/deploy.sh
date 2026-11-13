@@ -6,6 +6,9 @@
 # Needs: zig (brew install zig), cargo-zigbuild (cargo install cargo-zigbuild --locked),
 #        rustup target add aarch64-unknown-linux-gnu. `sudo` on the Pi asks for its password (ssh -t).
 #
+# No Rust toolchain? Use a binary from the GitHub release: PREBUILT=/path/to/music-server-linux-aarch64 PI=... ./deploy/deploy.sh
+# (skips the tests and the build).
+#
 # Settings and secrets: copy deploy/music-server.env.example to deploy/music-server.env (git ignores it) and fill it in.
 # It is uploaded to /etc/music-server/music-server.env on the Pi (root only, mode 600). Without that file the Pi
 # keeps the settings it already has.
@@ -17,9 +20,14 @@ set -euo pipefail
 PI="${PI:?set PI=user@host (the SSH target of the Raspberry Pi)}"
 cd "$(dirname "$0")/.."
 
-cargo test
-cargo zigbuild --release --target aarch64-unknown-linux-gnu.2.36   # .2.36 = glibc floor (Raspberry Pi OS has >= 2.36)
-BIN=target/aarch64-unknown-linux-gnu/release/music-server
+if [ -n "${PREBUILT:-}" ]; then
+  BIN="$PREBUILT"
+  [ -f "$BIN" ] || { echo "PREBUILT=$BIN not found" >&2; exit 1; }
+else
+  cargo test
+  cargo zigbuild --release --target aarch64-unknown-linux-gnu.2.36   # .2.36 = glibc floor (Raspberry Pi OS has >= 2.36)
+  BIN=target/aarch64-unknown-linux-gnu/release/music-server
+fi
 
 ssh "$PI" 'mkdir -p ~/music-server'
 scp "$BIN" "$PI:music-server/music-server.new"

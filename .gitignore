@@ -32,6 +32,9 @@ __pycache__/
 *.keystore
 *.env
 
+# Release artifacts (APK, server binary)
+/dist/
+
 # Assistant instruction files (local only)
 CLAUDE.md
 CLAUDE.fr.md

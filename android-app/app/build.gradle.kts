@@ -16,6 +16,31 @@ android {
         versionName = "0.1.0"
     }
 
+    // Release signing. Set JUKEPI_KEYSTORE (+ JUKEPI_KEYSTORE_PASSWORD, JUKEPI_KEY_ALIAS, JUKEPI_KEY_PASSWORD) to sign with
+    // YOUR key (keep it outside the repository). Without them the release is signed with the local debug key: fine to
+    // try the app, but an app signed with another key cannot be installed over it (uninstall first, which deletes the
+    // downloaded albums).
+    val releaseKeystore = System.getenv("JUKEPI_KEYSTORE")
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("JUKEPI_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("JUKEPI_KEY_ALIAS") ?: "jukepi"
+                keyPassword = System.getenv("JUKEPI_KEY_PASSWORD") ?: System.getenv("JUKEPI_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = if (releaseKeystore != null) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
+        }
+    }
+
     buildFeatures { compose = true }
 
     compileOptions {
