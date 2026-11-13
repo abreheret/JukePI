@@ -89,6 +89,8 @@ pub fn screen_title(title: &str, artist: Option<&str>) -> String {
 }
 
 /// Length in bytes of the ID3v2 tag at the start of `head` (10 bytes are enough), 0 when there is none.
+/// (The server itself reads it through `mp3seek`; this one checks the tags built here.)
+#[cfg(test)]
 pub fn existing_tag_len(head: &[u8]) -> u64 {
     if head.len() < 10 || &head[..3] != b"ID3" || head[6..10].iter().any(|b| b & 0x80 != 0) {
         return 0;

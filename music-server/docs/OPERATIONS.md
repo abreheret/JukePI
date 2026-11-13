@@ -93,6 +93,10 @@ From your computer, in `music-server/`: `PI=pi@raspberrypi.local ./deploy/deploy
 
 After the first deployment that brings covers, the scan resolves all albums (one `read_dir` per folder, plus reading a few MP3 files for embedded pictures): allow a few minutes, follow with `curl localhost:8765/covers` (`resolved_last_scan`).
 
+## Building the release files
+
+`./scripts/build-release.sh` (from the repository root) builds the server binary for the Pi and the APK into `dist/` and writes `SHA256SUMS`. The binary is built with the paths of your machine remapped, and the script then scans both files for your user name, home folder, git e-mail and any exported `LASTFM_*` secret, and stops if it finds one. Check the files it produces before attaching them to a release: they must not contain anything of yours.
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Action |

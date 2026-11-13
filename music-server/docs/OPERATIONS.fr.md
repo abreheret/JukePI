@@ -93,6 +93,10 @@ Depuis votre ordinateur, dans `music-server/` : `PI=pi@raspberrypi.local ./deplo
 
 Après le premier déploiement qui apporte les pochettes, le scan résout tous les albums (un `read_dir` par dossier, plus la lecture de quelques MP3 pour les images intégrées) : prévoir quelques minutes, suivre avec `curl localhost:8765/covers` (`resolved_last_scan`).
 
+## Construire les fichiers d'une release
+
+`./scripts/build-release.sh` (depuis la racine du dépôt) construit le binaire du serveur pour le Pi et l'APK dans `dist/` et écrit `SHA256SUMS`. Le binaire est compilé avec les chemins de votre machine masqués, puis le script cherche dans les deux fichiers votre nom d'utilisateur, votre dossier personnel, votre e-mail git et tout secret `LASTFM_*` exporté, et s'arrête s'il en trouve. Vérifiez les fichiers produits avant de les joindre à une release : ils ne doivent rien contenir de vous.
+
 ## Dépannage
 
 | Symptôme | Cause probable | Action |
