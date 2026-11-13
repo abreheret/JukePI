@@ -16,6 +16,8 @@
 - `scripts/build-release.sh`: builds the release files, signs with the release key, refuses a debug-signed APK and checks that no personal data or secret is in the files.
 
 ### Fixed
+- **The app crashed when the queue held the same track twice** ("Duplicate MediaItemData UID"): two clients asking for suggestions at the same moment appended the same ten tracks twice. The player now gives every queue entry a unique id, and the server no longer adds a track that is already queued.
+- **The app crashed at its first launch on a fresh install** (no saved server address), v0.1.0 included: a signal used by the reachability probe was declared after the `init` block that starts the probe, so it was still null. It never showed on a phone that already knew the server. Found by installing the APK on a phone that had never had the app.
 - **The Denon shows the title and artist of every track**, not only the variable-bitrate ones. The Denon only reads the ID3 tag of a stream when it sees the MPEG frame headers change, which a constant-bitrate file never does: such files now get one silent 26 ms frame with a differing header half a second in. Titles without tags show their name without the track number and the artist is appended to the title line (the front panel only scrolls the title). Accented titles are written as UTF-16. Measured on the real Denon: every one of 22 files tested now shows its title.
 - Exact track lengths are read from the VBR header (the index announced 36 minutes for a 4 minute track).
 

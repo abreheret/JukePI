@@ -57,7 +57,9 @@ class RemotePlayer(private val scope: CoroutineScope) : SimpleBasePlayer(Looper.
             val artwork = if (api != null && PlayerRepository.hasCover(q.albumId)) Uri.parse(api.coverUrl(q.albumId, 300)) else null
             val meta = MediaMetadata.Builder().setTitle(q.title).setArtist(q.artist).setArtworkUri(artwork).setIsPlayable(true).build()
             val durationMs = if (i == index && s.durationMs > 0) s.durationMs else q.durationMs
-            MediaItemData.Builder(q.trackId)
+            // The same track can be in the queue twice (an album queued again, a suggestion that was already there):
+            // the uid must be unique or Media3 throws "Duplicate MediaItemData UID" and the app crashes.
+            MediaItemData.Builder("$i-${q.trackId}")
                 .setMediaItem(MediaItem.Builder().setMediaId(q.trackId.toString()).setMediaMetadata(meta).build())
                 .setDurationUs(if (durationMs != null && durationMs > 0) durationMs * 1000 else C.TIME_UNSET)
                 .setIsSeekable(true)

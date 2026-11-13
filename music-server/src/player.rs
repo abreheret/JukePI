@@ -61,6 +61,12 @@ pub struct Snapshot {
     pub updated_at_ms: u64,
 }
 
+/// What is left of `items` once the tracks already in `queue` are removed (and repeats inside `items`).
+pub fn without_queued(queue: &[QueueItem], items: Vec<QueueItem>) -> Vec<QueueItem> {
+    let mut seen: std::collections::HashSet<i64> = queue.iter().map(|q| q.track_id).collect();
+    items.into_iter().filter(|i| seen.insert(i.track_id)).collect()
+}
+
 /// Same bound as the API's `/player/play`.
 const MAX_QUEUE: usize = 1000;
 
@@ -252,6 +258,9 @@ impl Actor {
             }
             Cmd::Jump(_) => self.error = Some("index out of range".into()),
             Cmd::Enqueue(items) => {
+                // A track already in the queue is not added again (two clients asking for suggestions at once gave the
+                // same ten tracks twice).
+                let items = without_queued(&self.queue, items);
                 if self.queue.len() + items.len() <= MAX_QUEUE {
                     self.queue.extend(items);
                 } else {
@@ -476,6 +485,15 @@ impl Actor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn enqueue_skips_what_is_already_queued() {
+        let item = |id: i64| QueueItem { track_id: id, album_id: 1, title: id.to_string(), artist: None, duration_ms: None, duration_exact: false };
+        let queue = vec![item(1), item(2)];
+        let added = without_queued(&queue, vec![item(2), item(3), item(3), item(4)]);
+        assert_eq!(added.iter().map(|i| i.track_id).collect::<Vec<_>>(), vec![3, 4], "2 is queued, 3 asked twice");
+        assert!(without_queued(&queue, vec![item(1), item(2)]).is_empty());
+    }
 
     #[test]
     fn natural_end_detection() {

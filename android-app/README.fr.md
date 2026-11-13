@@ -15,6 +15,7 @@ Cible : **Android 17 (API 37)** (développé sur un Pixel 8a). Kotlin, Jetpack C
 | Demande de la permission réseau local (obligatoire sur Android 17) | fait, testé |
 | Découverte automatique du serveur (mDNS) et saisie manuelle de l'adresse | fait, testé |
 | Grille d'albums avec pochettes, tri (récents, A–Z, artiste, au hasard), défilement infini | fait, testé |
+| Démarre sur une installation neuve (aucune adresse de serveur enregistrée ; la v0.1.0 plantait) | fait, testé sur un téléphone aux données effacées |
 | **« Récents »** montre d'abord ce que vous avez écouté (les lectures sur l'ampli sont enregistrées par le serveur, le téléphone signale les siennes), puis les albums avec pochette | fait, testé |
 | Bouton « Tous les albums de cet artiste » sur la page d'un album et dans le lecteur plein écran | fait, testé |
 | Page album, artistes, recherche plein texte (au fil de la saisie, tolérante aux fautes : « Résultats approchants » est indiqué) | fait, testé |

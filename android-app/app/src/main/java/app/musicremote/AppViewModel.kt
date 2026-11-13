@@ -49,6 +49,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var api by mutableStateOf(address?.let { Api(it) })
         private set
 
+    /**
+     * Wakes the reachability probe up early. It MUST stay above the `init` blocks: they start coroutines that run at
+     * once, and with no saved server address (a fresh install) the probe reaches `wake.first()` before the
+     * constructor is over. Declared further down it was still null there: the app crashed at its first launch.
+     */
+    private val wake = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
     /** The output the user chose. The one actually driven may differ: away from home it is the phone. */
     private var preferred: Output = if (prefs.getString("output", "denon") == "phone") Output.Phone else Output.Denon
 
@@ -294,7 +301,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---- is the server reachable? (3 states: no "offline" flash at start-up) ----
-    private val wake = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     /** Probe again now (network change, "Réessayer", new address). */
     fun probeNow() { wake.tryEmit(Unit) }
