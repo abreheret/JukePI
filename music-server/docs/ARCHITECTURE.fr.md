@@ -29,6 +29,7 @@ Le pilotage est côté Pi et pas côté téléphone, pour que la lecture continu
 | --- | --- | --- |
 | `main.rs` | Config par variables d'environnement, démarre scan, client HEOS, lecteur, serveur HTTP | L'API répond tout de suite, le scan tourne en arrière-plan |
 | `db.rs` | Ouvre SQLite (WAL, `synchronous=NORMAL`), crée le schéma | `open` pour le scan, `connect` (léger) pour chaque requête API |
+| `id3.rs` | Construit le tag ID3v2.3 (titre, artiste, album) placé devant les flux donnés à l'ampli | Voir « Ce que l'ampli affiche » |
 | `mp3seek.rs` | Trouve l'octet où commence la trame MP3 d'un instant donné | Parcourt les trames une à une (CBR et VBR) |
 | `mdns.rs` | Annonce le serveur sur le réseau local (mDNS / DNS-SD) | Une seule interface, celle de `MUSIC_PUBLIC_URL` |
 | `search.rs` | Index plein texte (SQLite FTS5) | Reconstruit après un scan qui a changé quelque chose |
@@ -158,6 +159,12 @@ L'appli ajoute le résultat à la file (`POST /player/enqueue` sur l'ampli, `add
 **Scrobbling** (`scrobble.rs`, ampli seulement) observe les instantanés du lecteur. Un `Tracker` pur décide : « en cours d'écoute » au début de la lecture d'un titre ; scrobble après la moitié du titre (4 minutes au plus), seulement s'il dure plus de 30 s ; pauses et trous ne comptent pas ; l'horodatage est le début du titre. Les écoutes sont d'abord écrites dans la table `scrobble_queue`, puis envoyées par lots de 50 ; un échec les laisse en attente pour l'essai suivant (toutes les 5 minutes, abandon après 14 jours, limite de Last.fm).
 
 **Lier un compte** (`lastfm.rs`) : `POST /lastfm/auth/start` demande un jeton à Last.fm et renvoie la page d'autorisation ; une fois « Autoriser » cliqué, `POST /lastfm/auth/finish` échange le jeton contre une clé de session, enregistrée dans `lastfm_session.json` à côté de l'index (mode 600). Les appels sont signés par `md5(paramètres triés + secret partagé)`. Le mot de passe Last.fm n'atteint jamais le serveur.
+
+## Ce que l'ampli affiche
+
+Le Denon affiche le titre, l'artiste et l'album qu'il trouve dans le tag ID3 au début du flux (détails et mesures dans [HEOS-FINDINGS.md](HEOS-FINDINGS.fr.md), section 2). Beaucoup de fichiers n'ont pas de tag utilisable : les flux donnés à l'ampli (`/stream/{id}.mp3?n=<ms>` et `/seek/...`) sont donc construits par `api.rs::tagged_audio` : **un tag neuf tiré de l'index, puis l'audio** du fichier, en sautant le tag propre du fichier et sa trame d'en-tête Xing/Info/VBRI (cette trame empêche l'ampli d'afficher le tag). Les requêtes du téléphone (sans `?n=`) reçoivent le fichier intact, avec `Range`.
+
+Supprimer la trame d'en-tête fait perdre la durée exacte à l'ampli. Le scan la lit donc dans l'en-tête (`tracks.duration_exact` : 1 = exacte, 2 = pas d'en-tête, estimation, 0 = pas encore vérifiée) et `player.rs` lui fait confiance plutôt qu'à celle de l'ampli. Une passe unique en arrière-plan (`scan::repair_durations`) corrige les titres indexés avant l'existence de la colonne (environ 2,5 minutes pour 43 794 titres).
 
 ## Ce qui n'est volontairement pas fait
 

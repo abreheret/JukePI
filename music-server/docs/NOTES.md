@@ -26,6 +26,7 @@ Key decisions, lessons learned and roadmap of the server. The detailed measureme
 ## Lessons learned
 
 - **The amplifier's internal queue wraps around.** After a clip ended, the Denon replayed URLs from earlier experiments. Clearing the queue before each track fixes it, but `clear_queue` during playback stops the track, and every `play_stream` emits a fake `stop`: the player ignores `stop` events while a transition it started is in flight.
+- **What the amplifier displays is what the stream's own ID3 tag says**, read a few seconds after the start, and a Xing/Info header frame in front of the audio stops it from being shown. Two fixes with a price: the server builds the tag from its index, and drops the header frame, which makes the amplifier's length estimate unreliable, hence the exact length read from the header (`duration_exact`). Beware: the observation is noisy, only repeat measurements on normal-sized files mean something.
 - **Many real-world MP3s have no Xing/VBRI header.** Durations are then only estimates, and some players (ExoPlayer) refuse to seek unless told to assume a constant bitrate. The seek code walks the MP3 frames itself and does not trust any table.
 - **`ffprobe` guesses the duration of a cut VBR file from its size**: measure the decoded duration instead.
 - **An unmounted disk must not empty the index**: the scan refuses to delete when it finds no MP3 at all.

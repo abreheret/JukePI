@@ -26,6 +26,7 @@ Décisions clés, enseignements et feuille de route du serveur. Les mesures dét
 ## Enseignements
 
 - **La file interne de l'ampli boucle.** Après la fin d'un clip, le Denon a rejoué des URL d'expériences précédentes. Vider la file avant chaque titre règle le problème, mais `clear_queue` pendant une lecture arrête le titre et chaque `play_stream` émet un faux `stop` : le lecteur ignore les `stop` tant qu'une transition qu'il a lancée est en cours.
+- **Ce que l'ampli affiche est ce que dit le tag ID3 du flux lui-même**, lu quelques secondes après le début, et une trame d'en-tête Xing/Info devant l'audio l'empêche de s'afficher. Deux correctifs qui ont un prix : le serveur construit le tag depuis son index et supprime la trame d'en-tête, ce qui rend l'estimation de durée de l'ampli peu fiable, d'où la durée exacte lue dans l'en-tête (`duration_exact`). Attention : l'observation est bruitée, seules des mesures répétées sur des fichiers de taille normale valent quelque chose.
 - **Beaucoup de MP3 réels n'ont pas d'en-tête Xing/VBRI.** Les durées ne sont alors que des estimations, et certains lecteurs (ExoPlayer) refusent de se déplacer si on ne leur dit pas de supposer un débit constant. Le code de déplacement parcourt lui-même les trames MP3 et ne se fie à aucune table.
 - **`ffprobe` devine la durée d'un VBR coupé d'après sa taille** : mesurer plutôt la durée décodée.
 - **Un disque démonté ne doit pas vider l'index** : le scan refuse de supprimer quand il ne trouve aucun MP3.

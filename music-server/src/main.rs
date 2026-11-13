@@ -2,6 +2,7 @@ mod api;
 mod covers;
 mod db;
 mod heos;
+mod id3;
 mod lastfm;
 mod mdns;
 mod mp3seek;
@@ -37,6 +38,7 @@ async fn main() -> anyhow::Result<()> {
     let scan_state: scan::SharedScan = Arc::new(Mutex::new(scan::ScanState::default()));
     if std::env::var("MUSIC_NO_SCAN").is_err() {
         scan::spawn(root.clone(), db_path.clone(), scan_state.clone()); // background: API answers right away
+        scan::repair_durations(root.clone(), db_path.clone()); // one-off, only for tracks indexed before the header was read
     }
 
     // HEOS: fixed Denon IP via HEOS_HOST, otherwise SSDP discovery. The URL given to the Denon

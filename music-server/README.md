@@ -82,7 +82,7 @@ All responses are JSON. No authentication: trusted local network only.
 | `GET /scan` | state of the last scan |
 | `POST /scan` | start a scan (`202`, or `409` if one is running) |
 
-Tracks are served **by numeric id**: every URL handed to the amplifier is plain ASCII (see why in [docs/HEOS-FINDINGS.md](docs/HEOS-FINDINGS.md), section 3).
+Tracks are served **by numeric id**: every URL handed to the amplifier is plain ASCII (see why in [docs/HEOS-FINDINGS.md](docs/HEOS-FINDINGS.md), section 3). Each one ends with a throw-away `?n=<ms>`, and the stream starts with an ID3 tag built from the index, so the amplifier shows the title, artist and album even for files without tags (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#what-the-amplifier-displays)).
 
 ### Recommendations and Last.fm
 

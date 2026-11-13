@@ -27,7 +27,12 @@ Everything in this document comes from tests on a real device, in November 2026.
 - The server must answer `Content-Type: audio/mpeg`.
 - Confirmed by ear on two files (a 192 kbps 8.9 MB test MP3 and a 128 kbps 5.6 MB MP3).
 - **Delay between sending `play_stream` and `state=play`: 0.43 to 0.55 s.**
-- The Denon reads the **album and artist** tags, but the `song` field often shows `Url Stream` and `image_url` is **always empty**: titles and covers must come from our app, not from the amplifier's display.
+- **What the Denon displays** (title, album, artist in `get_now_playing_media`, and on its front panel) comes from the **ID3 tag at the very start of the stream**, read 3 to 5 seconds after the track starts (`Url Stream` until then). It is not ICY/Shoutcast metadata (the Denon sends no `Icy-MetaData` header; its User-Agent is `GStreamer curlhttpsrc`), nor does it depend on `Accept-Ranges`, `Last-Modified` or HTTP/1.0 vs 1.1. `image_url` is **always empty**: no cover on the amplifier (that would need a DLNA/UPnP media server).
+- Many files have **no usable tag** (a Lavf-encoded file had only an encoder name), so the amplifier showed `Url Stream` for them. The server therefore starts every stream with an ID3v2.3 tag built from its index (`id3.rs`): title, artist, album as the app shows them, the file's own tag being skipped.
+- **A Xing / Info / VBRI header frame right after the tag stops the tag from being shown** (same file: `Url Stream` for 19 s with the frame, tags after a few seconds without it, and when the stream starts further into the file). The Denon does not need it to play, so the stream skips it (`mp3seek::audio_start`).
+- Without that frame the Denon can only **estimate the length** (315 s for a 259 s track), which would break the detection of the end of a track. The exact length is read from the header itself at scan time (`duration_exact` column) and the player trusts it over the Denon's. The same header showed that lofty's estimate was wrong for such files (it read 32 kbps from the header frame: 36 minutes for a 4 minute song).
+- The Denon also seems to **remember what it found per URL** (a URL played once without tags kept showing `Url Stream`; adding a query string showed them), so every start uses a fresh `?n=<ms>`.
+- Very small files (a 13 s, 325 KB clip) are unreliable: the Denon downloads them whole at once and often shows `Url Stream` anyway. Normal tracks (3 to 12 MB) are fine.
 - The duration given by the Denon (`duration=18000`) is more reliable than the `lofty` estimate (18442) for MP3s without a VBR header.
 
 ## 3. URL encoding: encode ONCE

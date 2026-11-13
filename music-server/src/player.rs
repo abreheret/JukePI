@@ -30,6 +30,10 @@ pub struct QueueItem {
     pub title: String,
     pub artist: Option<String>,
     pub duration_ms: Option<i64>,
+    /// `duration_ms` is exact (read from the file's VBR header): the stream handed to the Denon has no such header, so
+    /// the Denon can only estimate, and this value is the one to trust.
+    #[serde(default)]
+    pub duration_exact: bool,
 }
 
 #[derive(Clone, Copy, Serialize, Debug, PartialEq, Eq)]
@@ -336,10 +340,13 @@ impl Actor {
         }
         self.error = None;
         self.transition = Some(Instant::now());
+        // The Denon remembers the title/artist/album it found for a URL: a URL it once played without reading the
+        // tags keeps showing "Url Stream" for ever. A different query string makes every start a new URL (the
+        // server ignores it), so the tags are read each time. Still plain ASCII.
         let url = if offset_ms == 0 {
-            format!("{}/stream/{}.mp3", self.base_url, item.track_id)
+            format!("{}/stream/{}.mp3?n={}", self.base_url, item.track_id, now_ms())
         } else {
-            format!("{}/seek/{}/{}.mp3", self.base_url, item.track_id, offset_ms)
+            format!("{}/seek/{}/{}.mp3?n={}", self.base_url, item.track_id, offset_ms, now_ms())
         };
         info!("player: track {}/{} -> {} ({})", i + 1, self.queue.len(), item.title, url);
         let _ = self.heos.set_play_state("stop").await;
@@ -418,7 +425,18 @@ impl Actor {
                 if let Some(d) = ev.attrs.get("duration").and_then(|v| v.parse::<u64>().ok()) {
                     // After a seek the Denon reports the length of the CUT stream: only trust it to fill a gap.
                     if d > 0 && (self.offset_ms == 0 || self.dur_ms == 0) {
-                        self.dur_ms = self.offset_ms + d;
+                        // The streams we hand over have no VBR header when the index knows the exact length (the
+                        // Denon would not show the tags otherwise): the Denon then only estimates it, so keep ours.
+                        let exact = self
+                            .index
+                            .and_then(|i| self.queue.get(i))
+                            .filter(|q| q.duration_exact)
+                            .and_then(|q| q.duration_ms)
+                            .filter(|ms| *ms > 0);
+                        self.dur_ms = match exact {
+                            Some(ms) if self.offset_ms == 0 => ms as u64,
+                            _ => self.offset_ms + d,
+                        };
                     }
                 }
             }

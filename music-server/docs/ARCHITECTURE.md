@@ -29,7 +29,8 @@ Playback is driven from the Pi, not from the phone, so it keeps going when the p
 | --- | --- | --- |
 | `main.rs` | Configuration from environment variables; starts scan, HEOS client, player, HTTP server | The API answers immediately, the scan runs in the background |
 | `db.rs` | Opens SQLite (WAL, `synchronous=NORMAL`), creates the schema | `open` for the scan, a light `connect` for each API request |
-| `mp3seek.rs` | Finds the byte where the MP3 frame of a given time starts | Walks the frames one by one (CBR and VBR) |
+| `mp3seek.rs` | Finds the byte where the MP3 frame of a given time starts; reads the Xing/Info/VBRI header frame (exact length) | Walks the frames one by one (CBR and VBR) |
+| `id3.rs` | Builds the ID3v2.3 tag (title, artist, album) put in front of the streams given to the amplifier | See "What the amplifier displays" |
 | `mdns.rs` | Announces the server on the local network (mDNS / DNS-SD) | Single interface, the one of `MUSIC_PUBLIC_URL` |
 | `search.rs` | Full-text index (SQLite FTS5) | Rebuilt after a scan that changed something |
 | `covers.rs` | Finds each album's cover source, builds and caches thumbnails | See the "Covers" section |
@@ -158,6 +159,12 @@ The app appends the result to the queue (`POST /player/enqueue` on the amplifier
 **Scrobbling** (`scrobble.rs`, amplifier only) watches the player's snapshots. A pure `Tracker` decides: "now playing" when a track starts playing; scrobble after half of the track (4 minutes at most), only if it lasts over 30 s; pauses and gaps do not count; the timestamp is the start of the track. Listens are written to the `scrobble_queue` table first, then sent in batches of 50; a failure leaves them queued for the next try (every 5 minutes, dropped after 14 days, Last.fm's limit).
 
 **Linking an account** (`lastfm.rs`): `POST /lastfm/auth/start` asks Last.fm for a token and returns the authorisation page; after the user clicked "Allow", `POST /lastfm/auth/finish` trades the token for a session key, saved in `lastfm_session.json` next to the index (mode 600). Calls are signed with `md5(sorted parameters + shared secret)`. The Last.fm password never reaches the server.
+
+## What the amplifier displays
+
+The Denon shows the title, artist and album it finds in the ID3 tag at the start of the stream (details and measurements in [HEOS-FINDINGS.md](HEOS-FINDINGS.md), section 2). Many files have no usable tag, so the streams given to the amplifier (`/stream/{id}.mp3?n=<ms>` and `/seek/...`) are built by `api.rs::tagged_audio`: **a fresh tag from the index, then the audio** of the file, skipping the file's own tag and its Xing/Info/VBRI header frame (that frame stops the amplifier from showing the tag). The phone's requests (no `?n=`) get the file untouched, with `Range`.
+
+Dropping the header frame costs the amplifier the exact length. So the scan reads it from the header (`tracks.duration_exact`: 1 = exact, 2 = no header, an estimate, 0 = not checked) and `player.rs` trusts that value over the amplifier's. A one-off background pass (`scan::repair_durations`) fixes the tracks indexed before the column existed (about 2.5 minutes for 43,794 tracks).
 
 ## What is deliberately not done
 

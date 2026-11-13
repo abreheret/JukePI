@@ -192,7 +192,7 @@ fn track_json(r: &rusqlite::Row) -> rusqlite::Result<Json_> {
 }
 
 const TRACK_SELECT: &str = "SELECT t.id, t.album_id, t.title, COALESCE(t.artist, a.artist) AS artist, t.genre, t.track_no,
-    t.disc_no, t.year, t.duration_ms FROM tracks t JOIN albums a ON a.id = t.album_id";
+    t.disc_no, t.year, t.duration_ms, t.duration_exact FROM tracks t JOIN albums a ON a.id = t.album_id";
 
 async fn album(State(st): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<Json_>> {
     with_db(&st, move |c| {
@@ -325,6 +325,7 @@ async fn artists(State(st): State<AppState>) -> ApiResult<Json<Json_>> {
 /// Streams by numeric id so every URL given to the Denon is plain ASCII.
 /// ServeFile handles Range, HEAD, Content-Length, Last-Modified and audio/mpeg.
 async fn stream(State(st): State<AppState>, Path(file): Path<String>, req: Request<Body>) -> ApiResult<Response> {
+    tracing::debug!("stream request {file}: {} {:?}", req.method(), req.headers());
     let id: i64 = file
         .strip_suffix(".mp3")
         .unwrap_or(&file)
@@ -339,6 +340,12 @@ async fn stream(State(st): State<AppState>, Path(file): Path<String>, req: Reque
     })
     .await?;
     let rel = rel.ok_or(ApiError::NotFound)?;
+    // The URLs given to the amplifier carry `?n=<ms>` (see player.rs): they get the index's title/artist/album as an
+    // ID3 tag. Everyone else (the phone, with Range requests) gets the file as it is.
+    if req.uri().query().map(|q| q.split('&').any(|p| p.starts_with("n="))).unwrap_or(false) {
+        let (tag, exact) = with_db(&st, move |c| tag_for(c, id)).await?;
+        return tagged_audio(&st.root.join(rel), tag, 0, exact).await;
+    }
     let res = ServeFile::new(st.root.join(rel))
         .oneshot(req)
         .await
@@ -395,6 +402,7 @@ fn load_items(c: &Connection, ids: &[i64]) -> ApiResult<Vec<QueueItem>> {
                 title: r.get("title")?,
                 artist: r.get("artist")?,
                 duration_ms: r.get("duration_ms")?,
+                duration_exact: r.get::<_, i64>("duration_exact")? == 1,
             })
         }) {
             Ok(i) => items.push(i),
@@ -667,11 +675,59 @@ async fn player_seek(State(st): State<AppState>, Json(b): Json<SeekBody>) -> Api
     player_cmd(&st, cmd).await
 }
 
+/// Title, artist and album of a track as the index knows them: what the amplifier should display.
+fn tag_for(c: &Connection, id: i64) -> ApiResult<(Vec<u8>, bool)> {
+    c.query_row(
+        "SELECT t.title, COALESCE(t.artist, a.artist), a.name, t.duration_exact FROM tracks t JOIN albums a ON a.id = t.album_id WHERE t.id=?1",
+        params![id],
+        |r| {
+            let tag = crate::id3::build_tag(&r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?.as_deref(), r.get::<_, Option<String>>(2)?.as_deref());
+            Ok((tag, r.get::<_, i64>(3)? == 1))
+        },
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::QueryReturnedNoRows => ApiError::NotFound,
+        e => e.into(),
+    })
+}
+
+/// The audio of `full` from `start_byte` (past any tag the file starts with), behind a freshly built tag. The Denon
+/// shows what is in the tag; the file's own is often empty. No `Range`: the amplifier does not use it.
+async fn tagged_audio(full: &std::path::Path, tag: Vec<u8>, start_byte: u64, skip_header_frame: bool) -> ApiResult<Response> {
+    use axum::http::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_TYPE};
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+    use tokio_stream::StreamExt;
+    let internal = |e: std::io::Error| ApiError::Internal(e.into());
+    let mut f = tokio::fs::File::open(full).await.map_err(internal)?;
+    let len = f.metadata().await.map_err(internal)?.len();
+    let mut start = start_byte;
+    if start_byte == 0 {
+        // Past the file's own tag and, when its exact length is in the index, its VBR header frame (the Denon
+        // would not show our tag otherwise; without the header it can only estimate the length, which the player
+        // then ignores in favour of the index's).
+        let p = full.to_path_buf();
+        start = tokio::task::spawn_blocking(move || crate::mp3seek::audio_start(&p, skip_header_frame))
+            .await
+            .map_err(|e| ApiError::Internal(e.into()))?
+            .map_err(internal)?
+            .min(len);
+    }
+    f.seek(std::io::SeekFrom::Start(start)).await.map_err(internal)?;
+    let remaining = len.saturating_sub(start);
+    let total = tag.len() as u64 + remaining;
+    let head = tokio_stream::once(Ok::<axum::body::Bytes, std::io::Error>(axum::body::Bytes::from(tag)));
+    let body = axum::body::Body::from_stream(head.chain(tokio_util::io::ReaderStream::new(f.take(remaining))));
+    Ok(Response::builder()
+        .header(CONTENT_TYPE, "audio/mpeg")
+        .header(CONTENT_LENGTH, total)
+        .header(ACCEPT_RANGES, "none")
+        .body(body)
+        .map_err(|e| ApiError::Internal(e.into()))?)
+}
+
 /// The track from a given time: `/seek/{id}/{ms}.mp3`. The body starts at the MP3 frame at (or just after) `ms`.
 /// ASCII-only path on purpose: the Denon does not decode escapes, `?` or `=` in the URL it is given.
 async fn seek_stream(State(st): State<AppState>, Path((id, file)): Path<(i64, String)>) -> ApiResult<Response> {
-    use axum::http::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_TYPE};
-    use tokio::io::{AsyncReadExt, AsyncSeekExt};
     let ms: u64 = file.strip_suffix(".mp3").unwrap_or(&file).parse().map_err(|_| ApiError::NotFound)?;
     let rel: Option<String> = with_db(&st, move |c| {
         match c.query_row("SELECT path FROM tracks WHERE id=?1", params![id], |r| r.get::<_, String>(0)) {
@@ -688,16 +744,7 @@ async fn seek_stream(State(st): State<AppState>, Path((id, file)): Path<(i64, St
         .map_err(|e| ApiError::Internal(e.into()))?
         .map_err(|e| ApiError::Internal(e.into()))?
         .ok_or_else(|| ApiError::BadRequest("not an MPEG layer III file that can be cut".into()))?;
-    let mut f = tokio::fs::File::open(&full).await.map_err(|e| ApiError::Internal(e.into()))?;
-    let len = f.metadata().await.map_err(|e| ApiError::Internal(e.into()))?.len();
-    let remaining = len.saturating_sub(point.byte_offset);
-    f.seek(std::io::SeekFrom::Start(point.byte_offset)).await.map_err(|e| ApiError::Internal(e.into()))?;
-    let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::new(f.take(remaining)));
+    let (tag, _) = with_db(&st, move |c| tag_for(c, id)).await?;
     tracing::info!("seek stream: track {id} from {ms} ms -> frame at {} ms, byte {}", point.actual_ms, point.byte_offset);
-    Ok(Response::builder()
-        .header(CONTENT_TYPE, "audio/mpeg")
-        .header(CONTENT_LENGTH, remaining)
-        .header(ACCEPT_RANGES, "none")
-        .body(body)
-        .map_err(|e| ApiError::Internal(e.into()))?)
+    tagged_audio(&full, tag, point.byte_offset, false).await
 }

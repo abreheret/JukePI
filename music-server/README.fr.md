@@ -82,7 +82,7 @@ Toutes les réponses sont en JSON. Pas d'authentification : réseau local de con
 | `GET /scan` | état du dernier scan |
 | `POST /scan` | relance un scan (`202`, ou `409` si déjà en cours) |
 
-Les titres sont servis **par identifiant numérique** : toutes les URL données à l'ampli sont en ASCII pur (voir pourquoi dans [docs/HEOS-FINDINGS.md](docs/HEOS-FINDINGS.fr.md), section 3).
+Les titres sont servis **par identifiant numérique** : toutes les URL données à l'ampli sont en ASCII pur (voir pourquoi dans [docs/HEOS-FINDINGS.md](docs/HEOS-FINDINGS.fr.md), section 3). Chacune se termine par un `?n=<ms>` jetable, et le flux commence par un tag ID3 construit depuis l'index : l'ampli affiche ainsi titre, artiste et album même pour les fichiers sans tags (voir [docs/ARCHITECTURE.md](docs/ARCHITECTURE.fr.md#ce-que-lampli-affiche)).
 
 ### Recommandations et Last.fm
 

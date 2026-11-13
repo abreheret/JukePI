@@ -62,6 +62,67 @@ fn id3v2_size(r: &mut impl Read) -> io::Result<u64> {
     Ok(10 + size + footer)
 }
 
+/// The Xing / Info / VBRI header frame some encoders (LAME, Lavf...) put first. It is not audio: it is a table for
+/// seeking and the exact number of frames.
+#[derive(Debug, PartialEq)]
+pub struct HeaderFrame {
+    /// Size of the frame in bytes (to skip it).
+    pub len: u64,
+    /// Exact length of the file, when the header says how many frames it holds.
+    pub duration_ms: Option<u64>,
+}
+
+/// `Ok(None)`: the first frame after the ID3 tag is plain audio (or the file is not an MP3 we understand).
+pub fn header_frame(path: &Path) -> io::Result<Option<HeaderFrame>> {
+    let file = File::open(path)?;
+    let mut r = BufReader::with_capacity(64 * 1024, file);
+    let pos = id3v2_size(&mut r)?;
+    r.seek(io::SeekFrom::Start(pos))?;
+    let mut buf = [0u8; 192];
+    let n = r.read(&mut buf)?;
+    Ok(parse_header_frame(&buf[..n]))
+}
+
+fn be32(b: &[u8]) -> u64 {
+    u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as u64
+}
+
+fn parse_header_frame(buf: &[u8]) -> Option<HeaderFrame> {
+    if buf.len() < 40 {
+        return None;
+    }
+    let frame = parse_header([buf[0], buf[1], buf[2], buf[3]])?;
+    // Xing / Info sit right after the side information (9 to 32 bytes, 2 more with a CRC); VBRI at a fixed place.
+    let marker = buf[4..buf.len().min(4 + 40)].windows(4).position(|w| w == b"Xing" || w == b"Info").map(|p| p + 4);
+    let frames = if let Some(m) = marker {
+        // flags (4), then the number of frames (4) when bit 0 is set
+        if buf.len() >= m + 12 && be32(&buf[m + 4..m + 8]) & 1 != 0 { Some(be32(&buf[m + 8..m + 12])) } else { None }
+    } else if &buf[36..40] == b"VBRI" {
+        if buf.len() >= 50 { Some(be32(&buf[46..50])) } else { None }
+    } else {
+        return None;
+    };
+    let duration_ms = frames.filter(|f| *f > 0).map(|f| (f as f64 * frame.duration_us / 1000.0).round() as u64);
+    Some(HeaderFrame { len: frame.len, duration_ms })
+}
+
+/// Where the real audio of a file starts: after its ID3v2 tag and, with `skip_header_frame`, after the Xing / Info
+/// header frame too. The Denon does not show the tags of a stream that starts with such a header frame (seen with a
+/// Lavf-encoded file: `Url Stream`, while the same file without that frame shows them) and does not need it to play.
+pub fn audio_start(path: &Path, skip_header_frame: bool) -> io::Result<u64> {
+    let file = File::open(path)?;
+    let mut r = BufReader::with_capacity(64 * 1024, file);
+    let pos = id3v2_size(&mut r)?;
+    if !skip_header_frame {
+        return Ok(pos);
+    }
+    drop(r);
+    Ok(match header_frame(path)? {
+        Some(h) => pos + h.len,
+        None => pos,
+    })
+}
+
 /// First frame whose start time is >= `target_ms`; the last frame if the file is shorter.
 /// `Ok(None)`: no valid Layer III frame found (not an MP3 we can cut).
 pub fn find_offset(path: &Path, target_ms: u64) -> io::Result<Option<SeekPoint>> {
@@ -114,6 +175,50 @@ mod tests {
         let mut f = vec![0xFF, 0xFB, 0x90, 0x00];
         f.resize(417, 0);
         f
+    }
+
+    /// An Info frame: a normal frame header, then "Info", flags = frames present, `frames` frames.
+    fn info_frame(frames: u32) -> Vec<u8> {
+        let mut f = frame();
+        f[36..40].copy_from_slice(b"Info");
+        f[40..44].copy_from_slice(&1u32.to_be_bytes());
+        f[44..48].copy_from_slice(&frames.to_be_bytes());
+        f
+    }
+
+    #[test]
+    fn reads_the_exact_length_from_a_vbr_header() {
+        let mut data = info_frame(1000);
+        data.extend(frame());
+        let t = tempfile_path::Tmp::new(&data);
+        let h = header_frame(&t.0).unwrap().unwrap();
+        assert_eq!(h.len, 417);
+        assert_eq!(h.duration_ms, Some(26_122), "1000 frames of 26.122 ms");
+        // No frame count in the header: still a header frame, but no exact length.
+        let mut nofields = frame();
+        nofields[36..40].copy_from_slice(b"Xing");
+        let t = tempfile_path::Tmp::new(&nofields);
+        assert_eq!(header_frame(&t.0).unwrap(), Some(HeaderFrame { len: 417, duration_ms: None }));
+        // A plain audio frame is not a header.
+        let plain = synthetic(0, 3);
+        assert_eq!(header_frame(&plain.0).unwrap(), None);
+    }
+
+    #[test]
+    fn skips_the_tag_and_optionally_the_header_frame() {
+        let mut data = b"ID3\x03\x00\x00\x00\x00\x00\x5a".to_vec();
+        data.resize(100, 0);
+        data.extend(info_frame(3));
+        for _ in 0..3 {
+            data.extend(frame());
+        }
+        let t = tempfile_path::Tmp::new(&data);
+        assert_eq!(audio_start(&t.0, true).unwrap(), 100 + 417, "after the tag and the Info frame");
+        assert_eq!(audio_start(&t.0, false).unwrap(), 100, "only past the tag");
+        let plain = synthetic(100, 3);
+        assert_eq!(audio_start(&plain.0, true).unwrap(), 100, "no header frame: right after the tag");
+        let bare = synthetic(0, 3);
+        assert_eq!(audio_start(&bare.0, true).unwrap(), 0, "no tag at all");
     }
 
     fn synthetic(id3: usize, frames: usize) -> tempfile_path::Tmp {

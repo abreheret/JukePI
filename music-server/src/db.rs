@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS tracks(
   disc_no INTEGER,
   year INTEGER,
   duration_ms INTEGER,
+  -- 1: duration_ms is exact (read from the file's Xing/Info/VBRI header), 2: checked, no such header (an estimate), 0: not checked yet
+  duration_exact INTEGER NOT NULL DEFAULT 0,
   bitrate_kbps INTEGER,
   size INTEGER NOT NULL,
   mtime INTEGER NOT NULL
@@ -83,7 +85,35 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "synchronous", "NORMAL")?;
     conn.execute_batch(SCHEMA)?;
+    // Index created by an older version: add the column (a no-op on a new one).
+    let has: i64 = conn.query_row("SELECT COUNT(*) FROM pragma_table_info('tracks') WHERE name='duration_exact'", [], |r| r.get(0))?;
+    if has == 0 {
+        conn.execute_batch("ALTER TABLE tracks ADD COLUMN duration_exact INTEGER NOT NULL DEFAULT 0")?;
+    }
     Ok(conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_old_index_gets_the_new_column() {
+        let path = std::env::temp_dir().join(format!("jukepi-old-index-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let c = open(&path).unwrap();
+            c.execute_batch("INSERT INTO albums(id, dir, dir_name, name) VALUES(1, 'd', 'd', 'n')").unwrap();
+            c.execute_batch("INSERT INTO tracks(path, album_id, title, size, mtime) VALUES('a.mp3', 1, 't', 1, 1)").unwrap();
+            c.execute_batch("ALTER TABLE tracks DROP COLUMN duration_exact").unwrap(); // what an older version left behind
+        }
+        let c = open(&path).unwrap();
+        let v: i64 = c.query_row("SELECT duration_exact FROM tracks WHERE path='a.mp3'", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, 0, "existing rows start as 'not checked'");
+        let _ = open(&path).unwrap(); // second open: no error
+        drop(c);
+        let _ = std::fs::remove_file(&path);
+    }
 }
 
 /// Cheap connection for API handlers (schema already created at startup).
