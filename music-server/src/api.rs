@@ -1,5 +1,5 @@
 use crate::player::{self, Cmd, PlayerHandle, QueueItem};
-use crate::{covers, db, scan, search};
+use crate::{covers, db, lastfm, recommend, scan, search};
 use axum::body::Body;
 use axum::extract::{Path, Query, Request, State};
 use axum::http::StatusCode;
@@ -21,6 +21,8 @@ pub struct AppState {
     pub scan: scan::SharedScan,
     pub player: PlayerHandle,
     pub covers: std::sync::Arc<covers::CoverService>,
+    pub recommend: std::sync::Arc<recommend::Recommender>,
+    pub lastfm: std::sync::Arc<lastfm::Client>,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -31,6 +33,11 @@ pub fn router(state: AppState) -> Router {
         .route("/artists", get(artists))
         .route("/tracks/{id}", get(track))
         .route("/search", get(search_handler))
+        .route("/recommendations", get(recommendations))
+        .route("/lastfm", get(lastfm_status))
+        .route("/lastfm/auth/start", post(lastfm_auth_start))
+        .route("/lastfm/auth/finish", post(lastfm_auth_finish))
+        .route("/lastfm/session", axum::routing::delete(lastfm_unlink))
         .route("/cover/{album_id}", get(cover))
         .route("/covers", get(covers_stats))
         .route("/stream/{file}", get(stream))
@@ -40,6 +47,7 @@ pub fn router(state: AppState) -> Router {
         .route("/player/events", get(player_events))
         .route("/player/play", post(player_play))
         .route("/player/jump", post(player_jump))
+        .route("/player/enqueue", post(player_enqueue))
         .route("/player/next", post(player_next))
         .route("/player/previous", post(player_prev))
         .route("/player/pause", post(player_pause))
@@ -221,6 +229,85 @@ async fn track(State(st): State<AppState>, Path(id): Path<i64>) -> ApiResult<Jso
     .await
 }
 
+#[derive(Deserialize)]
+struct RecQuery {
+    track_id: i64,
+    limit: Option<usize>,
+    /// Comma-separated track ids to leave out (what is already in the queue).
+    exclude: Option<String>,
+}
+
+/// "More like this": tracks of the library similar to `track_id`. Last.fm similarity when a key is configured,
+/// local tags otherwise; the local tags also complete a short Last.fm answer. Never fails because of Last.fm.
+async fn recommendations(State(st): State<AppState>, Query(q): Query<RecQuery>) -> ApiResult<Json<Json_>> {
+    let limit = q.limit.unwrap_or(20).clamp(1, 100);
+    let exclude: std::collections::HashSet<i64> =
+        q.exclude.as_deref().unwrap_or("").split(',').filter_map(|s| s.trim().parse().ok()).collect();
+    let id = q.track_id;
+    let seed = with_db(&st, move |c| {
+        c.query_row(
+            "SELECT t.id, COALESCE(t.artist, a.artist), t.title FROM tracks t JOIN albums a ON a.id = t.album_id WHERE t.id=?1",
+            params![id],
+            |r| Ok(recommend::Seed { track_id: r.get(0)?, artist: r.get(1)?, title: r.get(2)? }),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => ApiError::NotFound,
+            e => e.into(),
+        })
+    })
+    .await?;
+    let (sim_tracks, sim_artists, taste) = st.recommend.similar(&seed).await;
+    let lastfm = st.recommend.enabled();
+    with_db(&st, move |c| {
+        let recs = recommend::pick(c, &seed, &sim_tracks, &sim_artists, &taste, &exclude, limit)?;
+        let mut sel = c.prepare(&format!("{TRACK_SELECT} WHERE t.id=?1"))?;
+        let mut items = Vec::with_capacity(recs.len());
+        for r in &recs {
+            let mut j = sel.query_row(params![r.track_id], track_json)?;
+            j["reason"] = json!(r.reason);
+            items.push(j);
+        }
+        let from_lastfm = recs.iter().any(|r| r.reason.starts_with("lastfm"));
+        Ok(Json(json!({
+            "seed_track_id": seed.track_id,
+            "lastfm_enabled": lastfm,
+            "taste": !taste.is_empty(),
+            "source": if from_lastfm { "lastfm" } else { "local" },
+            "items": items,
+        })))
+    })
+    .await
+}
+
+/// What Last.fm features are active. Never exposes the key, the secret or the session.
+async fn lastfm_status(State(st): State<AppState>) -> Json<Json_> {
+    let c = &st.lastfm;
+    Json(json!({
+        "similarity": c.enabled(),
+        "scrobbling": c.can_scrobble(),
+        "user": c.user(),
+        "needs_secret": c.enabled() && !c.has_secret(),
+        "auth_pending": c.auth_pending(),
+    }))
+}
+
+/// Link an account, step 1: open the returned URL in a browser and click "Allow".
+async fn lastfm_auth_start(State(st): State<AppState>) -> ApiResult<Json<Json_>> {
+    let url = st.lastfm.auth_start().await.map_err(|e| ApiError::BadRequest(format!("{e:#}")))?;
+    Ok(Json(json!({"url": url, "next": "open the url, click Allow, then POST /lastfm/auth/finish"})))
+}
+
+/// Link an account, step 2: once the page said it is authorised.
+async fn lastfm_auth_finish(State(st): State<AppState>) -> ApiResult<Json<Json_>> {
+    let user = st.lastfm.auth_finish().await.map_err(|e| ApiError::BadRequest(format!("{e:#}")))?;
+    Ok(Json(json!({"user": user, "scrobbling": st.lastfm.can_scrobble()})))
+}
+
+async fn lastfm_unlink(State(st): State<AppState>) -> StatusCode {
+    st.lastfm.unlink();
+    StatusCode::NO_CONTENT
+}
+
 async fn artists(State(st): State<AppState>) -> ApiResult<Json<Json_>> {
     with_db(&st, |c| {
         let mut st = c.prepare(
@@ -361,6 +448,27 @@ struct VolumeBody {
 async fn player_cmd(st: &AppState, cmd: Cmd) -> ApiResult<(StatusCode, Json<player::Snapshot>)> {
     st.player.send(cmd).await?;
     Ok((StatusCode::ACCEPTED, Json(st.player.snapshot())))
+}
+
+#[derive(Deserialize)]
+struct EnqueueBody {
+    track_ids: Vec<i64>,
+}
+
+/// Add tracks at the end of the queue (e.g. "more like this"). Nothing queued yet: use /player/play instead.
+async fn player_enqueue(State(st): State<AppState>, Json(b): Json<EnqueueBody>) -> ApiResult<(StatusCode, Json<player::Snapshot>)> {
+    if b.track_ids.is_empty() {
+        return Err(ApiError::BadRequest("nothing to add".into()));
+    }
+    if b.track_ids.len() > MAX_QUEUE {
+        return Err(ApiError::BadRequest(format!("too many tracks (max {MAX_QUEUE})")));
+    }
+    if st.player.snapshot().queue.is_empty() {
+        return Err(ApiError::BadRequest("the queue is empty: use /player/play".into()));
+    }
+    let ids = b.track_ids;
+    let items = with_db(&st, move |c| load_items(c, &ids)).await?;
+    player_cmd(&st, Cmd::Enqueue(items)).await
 }
 
 async fn player_jump(State(st): State<AppState>, Json(b): Json<JumpBody>) -> ApiResult<(StatusCode, Json<player::Snapshot>)> {

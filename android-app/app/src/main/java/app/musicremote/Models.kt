@@ -28,6 +28,16 @@ data class Track(
     @SerialName("track_no") val trackNo: Int? = null,
     @SerialName("duration_ms") val durationMs: Long? = null,
     @SerialName("album_name") val albumName: String? = null,
+    /** Why the server suggested it: lastfm_track, lastfm_artist, same_genre or same_artist. */
+    val reason: String? = null,
+)
+
+/** Answer of GET /recommendations. `source` is "lastfm" when Last.fm contributed, "local" when only the tags did. */
+@Serializable
+data class Recommendations(
+    val source: String = "local",
+    @SerialName("lastfm_enabled") val lastfmEnabled: Boolean = false,
+    val items: List<Track> = emptyList(),
 )
 
 @Serializable

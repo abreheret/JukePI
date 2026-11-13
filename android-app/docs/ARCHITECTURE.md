@@ -28,7 +28,7 @@ A single Compose activity. One `AppViewModel` holds the server address, the navi
 | `LocalLibrary.kt`, `LocalCatalog.kt` | Storage of downloaded albums; local browsing and search |
 | `DownloadWorker.kt` | Downloading one album (WorkManager) |
 | `AppViewModel.kt` | Address (remembered), `Api`, discovery, `Detail` stack, command layer, connectivity probe, output rules |
-| `Api.kt` | Server client: lists, album, search, player commands, SSE stream, downloads |
+| `Api.kt` | Server client: lists, album, search, recommendations, player commands (incl. enqueue), SSE stream, downloads |
 | `Models.kt` | JSON models (`Album`, `Track`, `PlayerSnapshot`…) and `PlayerUi` |
 | `Discovery.kt` | Finds the server through mDNS (`_music-server._tcp`) |
 | `Screens.kt` | Album grid, album page, "Downloaded" tab, artists, search, settings, downloads management |
@@ -104,6 +104,12 @@ When the output is the amplifier, the phone plays nothing, but Android shows the
 - **Buttons**: −30 / −10 / +10 / +30 s in the full-screen player; −10 / +10 s in the mini player; they send `POST /player/seek {"delta_ms":±N}` (the server computes from **its** position, not the screen's).
 - **Notification and lock screen**: `setMediaButtonPreferences` with two `CommandButton`s (`ICON_SKIP_BACK_10`, `ICON_SKIP_FORWARD_10`) placed in the **`SLOT_OVERFLOW`** slot. Without an explicit slot they took the place of Previous/Next (verified with `dumpsys notification`). Result: Previous, Pause, Next, −10 s, +10 s (five buttons, Android's maximum). The notification's +10 s button was tested with a real tap.
 - **Mute**: a speaker button in the full-screen player (next to the volume slider, which is greyed out and shows "muted") and in the volume dialog; `POST /player/mute`.
+
+## Suggestions ("same style")
+
+`AppViewModel.suggestSimilar()` asks `GET /recommendations` for the current track (excluding what is queued) and appends the answer: `POST /player/enqueue` on the amplifier, `addMediaItems` on the phone (if the phone's player had ended, it jumps to the first new track; on the amplifier, if it had stopped, it jumps to the old queue size). It needs the server (`Server.Online`), shows what happened in the snackbar and never runs twice at once (`suggesting`).
+
+Automatic continuation (`autoSimilar`, on by default, in Settings): a collector on the UI player state calls it once per track (`autoDoneFor`) when the queue's last track is `playing` or `loading`. The server decides where the suggestions come from; the app only says in Settings that the server may query Last.fm.
 
 ## Icon
 

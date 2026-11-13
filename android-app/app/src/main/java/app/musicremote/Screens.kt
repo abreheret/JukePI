@@ -456,6 +456,17 @@ fun SettingsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
             FilterChip(output == Output.Phone, { vm.chooseOutput(Output.Phone) }, label = { Text("Le téléphone") })
         }
         HorizontalDivider()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Continuer dans le même style", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Quand le dernier titre de la file démarre (par exemple la fin d'un album), la lecture enchaîne sur des titres proches de ta bibliothèque. Le serveur peut interroger Last.fm si une clé y est configurée : il lui envoie alors l'artiste et le titre en cours.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(vm.autoSimilar, { vm.updateAutoSimilar(it) })
+        }
+        HorizontalDivider()
         OutlinedTextField(text, { text = it }, label = { Text("Adresse (ex. http://192.168.1.50:8765)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = {

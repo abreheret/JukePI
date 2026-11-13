@@ -2,11 +2,14 @@ mod api;
 mod covers;
 mod db;
 mod heos;
+mod lastfm;
 mod mdns;
 mod mp3seek;
 mod online;
 mod player;
+mod recommend;
 mod scan;
+mod scrobble;
 mod search;
 
 use std::path::PathBuf;
@@ -72,7 +75,20 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    let app = api::router(api::AppState { root, db_path, scan: scan_state, player, covers: cover_service });
+    // Optional, OFF without a key. LASTFM_API_KEY: similarity (sends the artist/title of the track being played).
+    // LASTFM_SECRET + an account linked through /lastfm/auth/start: scrobbling (sends what the Denon plays).
+    // LASTFM_USER: account whose listening history lifts the suggestions when none is linked.
+    let data_dir = db_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
+    let lastfm = Arc::new(lastfm::Client::new(
+        std::env::var("LASTFM_API_KEY").ok(),
+        std::env::var("LASTFM_SECRET").ok(),
+        std::env::var("LASTFM_USER").ok(),
+        data_dir.join("lastfm_session.json"),
+    ));
+    scrobble::spawn(lastfm.clone(), db_path.clone(), player.watch());
+    let recommender = Arc::new(recommend::Recommender::new(lastfm.clone(), db_path.clone()));
+
+    let app = api::router(api::AppState { root, db_path, scan: scan_state, player, covers: cover_service, recommend: recommender, lastfm });
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     info!("listening on {}", listener.local_addr()?);
     axum::serve(listener, app)

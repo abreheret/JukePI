@@ -34,6 +34,9 @@ Le pilotage est côté Pi et pas côté téléphone, pour que la lecture continu
 | `search.rs` | Index plein texte (SQLite FTS5) | Reconstruit après un scan qui a changé quelque chose |
 | `covers.rs` | Trouve la source de pochette de chaque album, fabrique et met en cache les miniatures | Voir la section « Pochettes » |
 | `online.rs` | Recherche optionnelle de pochettes en ligne | Désactivée par défaut |
+| `lastfm.rs` | Client Last.fm : appels signés, liaison du compte, fichier de session | Secrets jamais journalisés ; fichier de session en mode 600 |
+| `recommend.rs` | « Même style » : similarité Last.fm + tags locaux, pondérés par l'historique d'écoute | Classement pur, testé unitairement |
+| `scrobble.rs` | Envoie à Last.fm ce que joue l'ampli | Inactif tant qu'il manque la clé, le secret ou un compte lié |
 | `scan.rs` | Parcourt le disque, lit les tags (`lofty`), met l'index à jour | Incrémental sur (chemin, taille, mtime) ; voir ci-dessous |
 | `api.rs` | Routes HTTP, erreurs JSON, flux SSE | Les accès SQLite passent par `spawn_blocking` |
 | `heos.rs` | Connexion TCP au Denon, commandes, événements, SSDP | Une tâche possède la socket ; reconnexion automatique |
@@ -140,12 +143,29 @@ Erreurs de lecture : le Denon répète la même erreur plusieurs fois. On la tra
 
 Position et durée : la durée vient de l'événement de progression du Denon (la plus fiable). L'estimation `lofty` (basée sur le débit) sert avant le premier événement.
 
+## Recommandations et Last.fm
+
+`GET /recommendations?track_id=N` (`recommend.rs`) répond à « qu'y a-t-il dans MA bibliothèque qui ressemble à ce titre ? ».
+
+1. **Point de départ** : l'artiste et le titre du morceau `N`.
+2. **Last.fm** (seulement avec `LASTFM_API_KEY`) : `track.getSimilar` (titres proches, jusqu'à 100) et `artist.getSimilar` (artistes proches, jusqu'à 60) en parallèle, plus `user.getTopArtists` pour le compte (lié, ou `LASTFM_USER`). Les réponses sont mises en cache dans la table `lastfm_cache` : 7 jours pour la similarité, 1 jour pour l'historique. Un échec de Last.fm est journalisé et donne des listes vides, jamais une erreur.
+3. **Rapprochement** : un passage sur la bibliothèque construit `artiste normalisé -> titres`. Les noms sont comparés sans casse, sans accents ni ponctuation, en ignorant un « The » initial, `&` = « and » et les parties entre parenthèses des titres (`(Remastered 2009)`). Ce que la bibliothèque ne possède pas est écarté.
+4. **Classement** : un titre exact proche vaut `1 + match`, un titre d'un artiste proche vaut `match`. Les goûts de l'utilisateur multiplient : `1 + 0,6 * racine(écoutes / écoutes de l'artiste le plus écouté)`. Au plus 2 titres par artiste, pas de doublon, rien de ce qui est déjà en file, jamais le titre de départ ni son artiste.
+5. **Repli local** quand la liste est courte (pas de clé, artiste inconnu) : même genre (artistes les plus écoutés d'abord), puis autres titres de l'artiste de départ (5 au plus). L'ordre est déterministe pour un titre donné.
+
+L'appli ajoute le résultat à la file (`POST /player/enqueue` sur l'ampli, `addMediaItems` sur le téléphone), automatiquement quand le dernier titre de la file démarre.
+
+**Scrobbling** (`scrobble.rs`, ampli seulement) observe les instantanés du lecteur. Un `Tracker` pur décide : « en cours d'écoute » au début de la lecture d'un titre ; scrobble après la moitié du titre (4 minutes au plus), seulement s'il dure plus de 30 s ; pauses et trous ne comptent pas ; l'horodatage est le début du titre. Les écoutes sont d'abord écrites dans la table `scrobble_queue`, puis envoyées par lots de 50 ; un échec les laisse en attente pour l'essai suivant (toutes les 5 minutes, abandon après 14 jours, limite de Last.fm).
+
+**Lier un compte** (`lastfm.rs`) : `POST /lastfm/auth/start` demande un jeton à Last.fm et renvoie la page d'autorisation ; une fois « Autoriser » cliqué, `POST /lastfm/auth/finish` échange le jeton contre une clé de session, enregistrée dans `lastfm_session.json` à côté de l'index (mode 600). Les appels sont signés par `md5(paramètres triés + secret partagé)`. Le mot de passe Last.fm n'atteint jamais le serveur.
+
 ## Ce qui n'est volontairement pas fait
 
 - Pas de file native HEOS ni de DLNA : mesure faite, le plan B n'est pas nécessaire (HEOS-FINDINGS section 4).
 - Pas de pré-génération des miniatures : elles sont créées au premier affichage (à ajouter si la première ouverture de la grille est lente sur le Pi).
 - Pas de purge du cache des miniatures orphelines (une pochette qui change laisse l'ancienne miniature, quelques dizaines de Ko).
-- Pas d'authentification sur l'API : réseau local seulement.
+- Pas d'authentification sur l'API : réseau local seulement (y compris `/lastfm/*` : quiconque est sur le réseau peut délier le compte).
+- Le scrobbling ne couvre pas le lecteur du téléphone (l'appli ne remonte pas ses écoutes au serveur).
 - Pas de recherche tolérante aux fautes de frappe (FTS5 ne fait que des préfixes) : « beatels » ne trouve rien.
 - Pas de surveillance du disque (`notify`) : `POST /scan` ou redémarrage du service suffisent pour l'instant.
 - Pas de lecture sans blanc entre deux titres : ~0,3 à 0,5 s, c'est la limite de `play_stream`.

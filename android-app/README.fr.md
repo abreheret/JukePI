@@ -25,6 +25,7 @@ Cible : **Android 17 (API 37)** (développé sur un Pixel 8a). Kotlin, Jetpack C
 | **Téléchargement d'albums** (Télécharger / Annuler / Retirer sur la page de l'album, reprise après interruption) | fait, testé (6 titres, 47 Mo en ~3 s) |
 | **Onglet « Téléchargés »** : tout ce qui est sur le téléphone, état et taille de chaque album, espace libre, gestion | fait, vérifié |
 | **Mode hors connexion** : détection automatique, bandeau, albums / artistes / recherche limités au contenu téléchargé, sortie forcée sur le téléphone | fait, testé en coupant le réseau |
+| **« Même style »** (bouton du lecteur plein écran) et **enchaînement automatique** : quand le dernier titre de la file démarre, des titres de la bibliothèque qui y ressemblent sont ajoutés (réglage, activé par défaut ; demande le serveur) | fait ; le côté serveur est testé sur la vraie bibliothèque ; l'enchaînement en fin d'album réel pas encore vérifié par une écoute complète |
 | Reprise d'un téléchargement interrompu au premier titre manquant | écrit ; pas testé en tuant l'appli en plein téléchargement |
 
 ## Limites connues

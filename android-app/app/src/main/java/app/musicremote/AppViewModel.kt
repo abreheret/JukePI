@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.SystemClock
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.BufferOverflow
@@ -79,6 +80,73 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         combine(PlayerRepository.output, PlayerRepository.ui, PlayerRepository.phoneUi) { out, denon, phone ->
             if (out == Output.Phone) phone else denon
         }.stateIn(viewModelScope, SharingStarted.Eagerly, PlayerUi())
+
+    // ---- "more like this": suggestions from the server (Last.fm when configured there, local tags otherwise) ----
+    var suggesting by mutableStateOf(false)
+        private set
+
+    /** Keep the music going: when the last track of the queue starts, suggestions are appended by themselves. */
+    var autoSimilar by mutableStateOf(prefs.getBoolean("auto_similar", true))
+        private set
+    fun updateAutoSimilar(on: Boolean) { autoSimilar = on; prefs.edit().putBoolean("auto_similar", on).apply() }
+    private var autoDoneFor: Long? = null
+
+    init {
+        viewModelScope.launch { player.collect { maybeAutoSuggest(it.snap) } }
+    }
+
+    private fun maybeAutoSuggest(s: PlayerSnapshot) {
+        val cur = s.current ?: return
+        if (!autoSimilar || s.queue.isEmpty() || s.index != s.queue.lastIndex) return
+        if (s.status != "playing" && s.status != "loading") return
+        if (autoDoneFor == cur.trackId) return
+        autoDoneFor = cur.trackId
+        suggestSimilar(auto = true)
+    }
+
+    /** Append tracks similar to the current one to the queue (Denon or phone). Needs the server. */
+    fun suggestSimilar(auto: Boolean = false) {
+        val a = api ?: return
+        val snap = player.value.snap
+        val cur = snap.current ?: return
+        if (PlayerRepository.server.value != Server.Online) {
+            if (!auto) message = "Hors connexion : les suggestions demandent le serveur."
+            return
+        }
+        if (suggesting) return
+        suggesting = true
+        val oldSize = snap.queue.size
+        val stopped = snap.status == "stopped"
+        val toPhone = phoneMode
+        viewModelScope.launch {
+            try {
+                val rec = a.recommendations(cur.trackId, 20, snap.queue.map { it.trackId })
+                if (rec.items.isEmpty()) {
+                    if (!auto) message = "Aucune suggestion trouvée pour ce titre."
+                    return@launch
+                }
+                if (toPhone) {
+                    val items = rec.items.mapNotNull { phoneItem(it, a.base) }
+                    phone { p ->
+                        val old = p.mediaItemCount
+                        p.addMediaItems(items)
+                        if (p.playbackState == Player.STATE_ENDED) { p.seekTo(old, 0); p.play() }
+                    }
+                } else {
+                    a.enqueue(rec.items.map { it.id })
+                    if (stopped) a.jump(oldSize)
+                }
+                val how = if (rec.source == "lastfm") "d'après Last.fm" else "d'après les genres de ta bibliothèque"
+                message = "${rec.items.size} titres ajoutés à la file ($how)."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (!auto) message = "Suggestions indisponibles : ${e.message ?: e.javaClass.simpleName}"
+            } finally {
+                suggesting = false
+            }
+        }
+    }
 
     fun remember(albums: List<Album>) = PlayerRepository.remember(albums)
     fun hasCover(albumId: Long): Boolean = PlayerRepository.hasCover(albumId)

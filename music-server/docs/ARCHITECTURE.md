@@ -34,6 +34,9 @@ Playback is driven from the Pi, not from the phone, so it keeps going when the p
 | `search.rs` | Full-text index (SQLite FTS5) | Rebuilt after a scan that changed something |
 | `covers.rs` | Finds each album's cover source, builds and caches thumbnails | See the "Covers" section |
 | `online.rs` | Optional online cover lookup | Off by default |
+| `lastfm.rs` | Last.fm client: signed calls, account linking, session file | Secrets never logged; session file mode 600 |
+| `recommend.rs` | "More like this": Last.fm similarity + local tags, lifted by the listening history | Pure ranking, unit-tested |
+| `scrobble.rs` | Sends what the Amplifier plays to Last.fm | Off until key, secret and a linked account exist |
 | `scan.rs` | Walks the disk, reads tags (`lofty`), updates the index | Incremental on (path, size, mtime); see below |
 | `api.rs` | HTTP routes, JSON errors, SSE stream | SQLite access goes through `spawn_blocking` |
 | `heos.rs` | TCP connection to the amplifier, commands, events, SSDP | One task owns the socket; automatic reconnection |
@@ -140,12 +143,29 @@ Playback errors: the amplifier repeats the same error several times. It is handl
 
 Position and duration: the duration comes from the amplifier's progress event (the most reliable). The `lofty` estimate (based on bitrate) is used before the first event.
 
+## Recommendations and Last.fm
+
+`GET /recommendations?track_id=N` (`recommend.rs`) answers "what in MY library sounds like this track?".
+
+1. **Seed**: the artist and title of track `N`.
+2. **Last.fm** (only with `LASTFM_API_KEY`): `track.getSimilar` (similar tracks, up to 100) and `artist.getSimilar` (similar artists, up to 60) in parallel, plus `user.getTopArtists` for the account (linked, or `LASTFM_USER`). Answers are cached in the `lastfm_cache` table: 7 days for similarity, 1 day for the listening history. A Last.fm failure is logged and gives empty lists, never an error.
+3. **Matching**: one pass over the library builds `normalised artist -> tracks`. Names are compared case-, accent- and punctuation-insensitively, ignoring a leading "The", `&` = "and" and bracketed parts of titles (`(Remastered 2009)`). Whatever the library does not own is dropped.
+4. **Ranking**: an exact similar track scores `1 + match`, a track of a similar artist `match`. The user's taste multiplies it: `1 + 0.6 * sqrt(plays / plays of the most played artist)`. At most 2 tracks per artist, no duplicate, nothing already queued, never the seed track or its artist.
+5. **Local fallback** when the list is short (no key, unknown artist): same genre tag (artists the user plays most first), then other tracks of the seed's artist (at most 5). The order is deterministic for a given seed.
+
+The app appends the result to the queue (`POST /player/enqueue` on the amplifier, `addMediaItems` on the phone), automatically when the last queued track starts.
+
+**Scrobbling** (`scrobble.rs`, amplifier only) watches the player's snapshots. A pure `Tracker` decides: "now playing" when a track starts playing; scrobble after half of the track (4 minutes at most), only if it lasts over 30 s; pauses and gaps do not count; the timestamp is the start of the track. Listens are written to the `scrobble_queue` table first, then sent in batches of 50; a failure leaves them queued for the next try (every 5 minutes, dropped after 14 days, Last.fm's limit).
+
+**Linking an account** (`lastfm.rs`): `POST /lastfm/auth/start` asks Last.fm for a token and returns the authorisation page; after the user clicked "Allow", `POST /lastfm/auth/finish` trades the token for a session key, saved in `lastfm_session.json` next to the index (mode 600). Calls are signed with `md5(sorted parameters + shared secret)`. The Last.fm password never reaches the server.
+
 ## What is deliberately not done
 
 - No native HEOS queue or DLNA: measured, plan B is not needed (HEOS-FINDINGS section 4).
 - No thumbnail pre-generation: they are created on first display (to add if the first opening of the grid is slow on the Pi).
 - No purge of orphan thumbnails (a changed cover leaves the old thumbnail behind, a few tens of KB).
-- No API authentication: local network only.
+- No API authentication: local network only (this includes `/lastfm/*`: anyone on the network can unlink the account).
+- Scrobbling does not cover the phone's own player (the app does not report its listens to the server).
 - No typo-tolerant search (FTS5 only does prefixes): "beatels" finds nothing.
 - No disk watching (`notify`): `POST /scan` or a service restart is enough for now.
 - No gapless playback between tracks: ~0.3–0.5 s, the limit of `play_stream`.

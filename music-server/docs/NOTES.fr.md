@@ -18,6 +18,9 @@ Décisions clés, enseignements et feuille de route du serveur. Les mesures dét
 | Index FTS5 reconstruit depuis les tables après un scan qui a changé quelque chose | Simple et assez rapide (3 s pour 43 794 titres sur un Pi 4) |
 | Pochettes en ligne **sur option** | Elles envoient noms d'artistes et d'albums à des tiers |
 | L'index est sur la carte SD, le disque de la bibliothèque en lecture seule | Un disque débranché ou « sale » ne doit jamais pouvoir corrompre quoi que ce soit |
+| Les recommandations viennent de la **similarité Last.fm filtrée par la bibliothèque**, avec les tags locaux en repli | La bibliothèque est la seule chose jouable : ce que Last.fm suggère et que la bibliothèque n'a pas est inutile ; un repli local garde la fonction utilisable sans clé ou hors ligne |
+| Last.fm est **facultatif à deux niveaux** (clé : suggestions ; clé + secret + compte lié : scrobbling) et le compte est lié dans le navigateur | Rien n'est envoyé sans configuration, et le mot de passe Last.fm n'atteint jamais le serveur |
+| Les secrets sont dans un fichier réservé à root sur le Pi, installé depuis un fichier local ignoré par git | Le dépôt peut être public sans jamais contenir de clé |
 | Compilation croisée avec `zig` + `cargo-zigbuild` | Mieux vaut laisser le Pi à ses autres tâches que lui faire compiler |
 
 ## Enseignements
@@ -47,7 +50,9 @@ Décisions clés, enseignements et feuille de route du serveur. Les mesures dét
 
 ## Feuille de route
 
-- [ ] Recommandations (« du même style ») : tags + historique d'écoute d'abord, empreintes audio ensuite.
+- [x] Recommandations (« même style ») : similarité Last.fm + tags locaux + historique d'écoute. [ ] Empreintes audio plus tard.
+- [ ] Pas encore vérifié par une vraie écoute : les scrobbles qui apparaissent sur le profil, l'enchaînement automatique en fin d'album.
+- [ ] Scrobbler aussi ce que joue le téléphone (l'appli devrait remonter ses écoutes au serveur).
 - [ ] Recherche tolérante aux fautes de frappe (trigrammes ou distance d'édition) ; unifier les orthographes d'artistes (« AC/DC » / « Ac-Dc »).
 - [ ] Pré-générer les miniatures de 300 px après un scan si la première ouverture de la grille est lente.
 - [ ] Surveillance du disque (`notify`) au lieu de `POST /scan`.

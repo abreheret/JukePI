@@ -70,9 +70,26 @@ Check from a Mac: `dns-sd -B _music-server._tcp local.` (list) then `dns-sd -L "
 
 Off by default. Enabling it sends to `musicbrainz.org` and `coverartarchive.org` (which redirects to `archive.org`) the artist name and album name of **every album without a local cover**, plus the Pi's IP. To enable it, add to `deploy/music-server.service`: `Environment=COVERS_ONLINE=1` (and, to be polite to MusicBrainz, `Environment=MUSICBRAINZ_CONTACT=<address or URL>`), then redeploy. Before enabling: `curl localhost:8765/covers` gives the number of `none` albums that would be concerned.
 
+## Enabling Last.fm (privacy)
+
+Everything is off without a key. What each level sends to Last.fm (`ws.audioscrobbler.com`):
+
+| Setting | Enables | Sent to Last.fm |
+| --- | --- | --- |
+| `LASTFM_API_KEY` | "more like this" | the artist and title of the track a suggestion is asked for; the account name for the listening history if there is one |
+| + `LASTFM_SECRET` and a linked account | scrobbling | everything the **amplifier** plays, with the time (the phone's own player is not covered) |
+
+1. Create an application on <https://www.last.fm/api/account/create> (any name). It gives an **API key** and a **shared secret**.
+2. Put them in `deploy/music-server.env` (copy `deploy/music-server.env.example`; git ignores it) and deploy: `deploy.sh` installs the file on the Pi as `/etc/music-server/music-server.env`, owner root, mode 600. Do not add them to the unit file or the repository. (By hand: a drop-in `/etc/systemd/system/music-server.service.d/x.conf` with `[Service]` / `Environment=LASTFM_API_KEY=...`, mode 600.)
+3. Link your account once, for scrobbling: `MUSIC_SERVER=<pi-ip>:8765 ./scripts/lastfm-link.sh`. It prints a Last.fm page: log in, click "Allow access", come back and press Enter. Your password is typed on last.fm only. The session key is stored in `~/.local/share/music-server/lastfm_session.json` (mode 600) on the Pi. `./scripts/lastfm-link.sh unlink` (or `DELETE /lastfm/session`) forgets it.
+4. Check: `curl localhost:8765/lastfm` gives `{"similarity":true,"scrobbling":true,"user":"<you>",...}` (no secret in it), and `journalctl -u music-server | grep -i last.fm` shows `Last.fm ... enabled`. After a listen, `Last.fm: 1 scrobble(s) sent`, and the track appears in your recent tracks.
+5. A Last.fm profile is public by default, and so is the history the scrobbles build: change it in your Last.fm privacy settings if you do not want that.
+
+`/lastfm/*` has no authentication, like the rest of the API: keep the server on a trusted network. If a secret leaked (pasted somewhere public), create a new application on Last.fm, replace the values and redeploy.
+
 ## Deploying a new version
 
-From your computer, in `music-server/`: `PI=pi@raspberrypi.local ./deploy/deploy.sh` (tests, cross-compilation, upload, restart; asks for the `sudo` password). The binary is built with `cargo zigbuild --release --target aarch64-unknown-linux-gnu.2.36` (`.2.36` sets the minimum glibc version; the Pi has 2.41). The systemd unit is only installed if the Pi does not have one yet (`FORCE_UNIT=1` to overwrite it): it holds your settings. The same steps were run by hand during development; the script itself has not been run end to end. The `sudo` password prompt is interactive: run the script **in a real terminal**.
+From your computer, in `music-server/`: `PI=pi@raspberrypi.local ./deploy/deploy.sh` (tests, cross-compilation, upload, restart; asks for the `sudo` password). If `deploy/music-server.env` exists it is installed on the Pi as `/etc/music-server/music-server.env` (root only) and overrides the unit's `Environment=` lines; without it the Pi keeps its settings. The binary is built with `cargo zigbuild --release --target aarch64-unknown-linux-gnu.2.36` (`.2.36` sets the minimum glibc version; the Pi has 2.41). The systemd unit is only installed if the Pi does not have one yet (`FORCE_UNIT=1` to overwrite it): it holds your settings. The same steps were run by hand during development; the script itself has not been run end to end. The `sudo` password prompt is interactive: run the script **in a real terminal**.
 
 After the first deployment that brings covers, the scan resolves all albums (one `read_dir` per folder, plus reading a few MP3 files for embedded pictures): allow a few minutes, follow with `curl localhost:8765/covers` (`resolved_last_scan`).
 
@@ -89,6 +106,8 @@ After the first deployment that brings covers, the scan resolves all albums (one
 | Disk disconnects | USB budget / power | `vcgencmd get_throttled`; powered USB hub for the 2.5" disk |
 | `has_cover: false` everywhere after deployment | the cover scan has not finished, or `MUSIC_ROOT` unreadable | `curl localhost:8765/covers`; `journalctl -u music-server | grep covers` |
 | A cover is wrong | wrong file picked in the folder | Rename the wanted image to `cover.jpg` in the album folder, then `POST /scan` (the folder date changes, the album is resolved again) |
+| Suggestions come only from the local tags (`source: "local"`) | no `LASTFM_API_KEY`, the artist is unknown to Last.fm, or Last.fm is unreachable | `curl localhost:8765/lastfm`; `journalctl -u music-server \| grep -i last.fm` |
+| Listens do not appear on Last.fm | no account linked (`scrobbling:false`), a track under 30 s or played less than half, Pi offline | `./scripts/lastfm-link.sh`; queued listens go out by themselves (`scrobble_queue` table) |
 | The app does not see the server | multicast blocked (guest network, Wi-Fi repeater), or `MUSIC_PUBLIC_URL` is not an IP | From a Mac: `dns-sd -B _music-server._tcp local.`; log: `mDNS: announcing` or `mDNS disabled`; as a last resort type `http://192.168.1.50:8765` by hand |
 | Search finds nothing though the library is indexed | FTS index empty or old | It is rebuilt at start-up if its row count does not match; `journalctl -u music-server \| grep "search index"` |
 | Port already in use at start-up | another service on 8765 | `ss -ltn`; change `MUSIC_BIND` |

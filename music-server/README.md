@@ -20,7 +20,8 @@ It is the server half of JukePI; the Android remote is in [`../android-app`](../
 | Full-text search (titles, albums, artists; accent-insensitive, prefixes) | done, tested (10–17 ms) |
 | mDNS announcement (`_music-server._tcp`) | done, verified |
 | systemd service | done |
-| Recommendations ("more like this") | not done |
+| Recommendations ("more like this"): Last.fm similarity + local genres, lifted by your listening history | done, tested on the real library; the automatic chaining at the end of an album is not yet checked by a full listen |
+| Scrobbling of what the amplifier plays to Last.fm | done, account linked; first scrobble not yet checked on the profile |
 
 ## Architecture at a glance
 
@@ -48,6 +49,9 @@ Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 | `COVERS_ONLINE` | (unset) | `1` enables the online cover lookup. **Sends artist and album names of albums without a local cover to musicbrainz.org and coverartarchive.org** |
 | `MUSICBRAINZ_CONTACT` | (empty) | Contact address or URL added to the User-Agent (MusicBrainz asks for one; fill in your own) |
 | `COVERS_ONLINE_DELAY_S` | `60` | Delay before the first online lookup |
+| `LASTFM_API_KEY` | (unset) | Enables the Last.fm similarity. **Sends the artist and title of the track a suggestion is asked for to ws.audioscrobbler.com.** Keep it in a systemd drop-in, never in the repository |
+| `LASTFM_SECRET` | (unset) | Shared secret of your Last.fm application: needed (with a linked account) to scrobble. Same care as the key |
+| `LASTFM_USER` | (unset) | Account whose listening history lifts the suggestions when no account is linked; once one is linked its name is used |
 | `MUSIC_MDNS` | `1` | `0` disables the mDNS announcement |
 | `MUSIC_MDNS_NAME` | `Music Server` | Instance name shown in the app |
 | `MUSIC_NO_SCAN` | (unset) | If set, no scan at start-up |
@@ -78,6 +82,18 @@ All responses are JSON. No authentication: trusted local network only.
 
 Tracks are served **by numeric id**: every URL handed to the amplifier is plain ASCII (see why in [docs/HEOS-FINDINGS.md](docs/HEOS-FINDINGS.md), section 3).
 
+### Recommendations and Last.fm
+
+| Request | Effect |
+| --- | --- |
+| `GET /recommendations?track_id=N&limit=20&exclude=1,2` | tracks of the library that sound like track `N`: `{seed_track_id, source: "lastfm"\|"local", lastfm_enabled, taste, items}`. Each item is a track plus `reason` (`lastfm_track`, `lastfm_artist`, `same_genre`, `same_artist`). `exclude`: ids already queued. `limit` 1–100 (default 20). Never fails because of Last.fm: without a key it answers from the local tags |
+| `GET /lastfm` | `{similarity, scrobbling, user, needs_secret, auth_pending}`. Never contains a key, a secret or a session |
+| `POST /lastfm/auth/start` | link an account, step 1: returns `{url}` to open in a browser and authorise. Needs `LASTFM_API_KEY` and `LASTFM_SECRET` |
+| `POST /lastfm/auth/finish` | step 2, once authorised: stores the session, scrobbling starts |
+| `DELETE /lastfm/session` | unlink the account (`204`) |
+
+How the suggestions are built is described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#recommendations-and-lastfm); how to set Last.fm up in [docs/OPERATIONS.md](docs/OPERATIONS.md#enabling-lastfm-privacy). Like the rest of the API, `/lastfm/*` has **no authentication**: anyone on the network can unlink the account.
+
 ### Player (amplifier)
 
 | Request | Effect |
@@ -87,6 +103,7 @@ Tracks are served **by numeric id**: every URL handed to the amplifier is plain 
 | `POST /player/play` | body `{"album_id":N}` or `{"track_id":N}` or `{"track_ids":[...],"start":0}`: replaces the queue and starts playing |
 | `POST /player/next`, `/previous`, `/pause`, `/resume`, `/stop` | commands (`202` + snapshot) |
 | `POST /player/jump` | body `{"index":N}` |
+| `POST /player/enqueue` | body `{"track_ids":[...]}`: appends to the end of the queue without touching the current track (`400` if nothing is queued: use `/player/play`) |
 | `POST /player/volume` | body `{"level":0-100}` |
 | `POST /player/mute` | body `{"mute":true\|false}` (the volume is kept) |
 | `POST /player/seek` | body `{"position_ms":N}` (absolute) or `{"delta_ms":±N}` (relative). **About 1 s of silence**: the stream is restarted at the wanted spot |

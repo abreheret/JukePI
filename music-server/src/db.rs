@@ -2,7 +2,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::time::Duration;
 
-const SCHEMA: &str = "
+pub(crate) const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS albums(
   id INTEGER PRIMARY KEY,
   dir TEXT NOT NULL UNIQUE,
@@ -55,6 +55,21 @@ CREATE TABLE IF NOT EXISTS album_covers(
   dir_mtime INTEGER NOT NULL DEFAULT 0,
   checked_at INTEGER NOT NULL DEFAULT 0,
   online_checked_at INTEGER NOT NULL DEFAULT 0
+);
+-- Listens waiting to be sent to Last.fm (scrobble.rs). Emptied as soon as they are accepted.
+CREATE TABLE IF NOT EXISTS scrobble_queue(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  artist TEXT NOT NULL,
+  track TEXT NOT NULL,
+  album TEXT,
+  ts INTEGER NOT NULL,
+  duration INTEGER
+);
+-- Last.fm similarity answers (recommend.rs), kept 7 days. Safe to drop: it is only a cache.
+CREATE TABLE IF NOT EXISTS lastfm_cache(
+  key TEXT PRIMARY KEY,
+  fetched_at INTEGER NOT NULL,
+  payload TEXT NOT NULL
 );
 ";
 

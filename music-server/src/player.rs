@@ -57,9 +57,14 @@ pub struct Snapshot {
     pub updated_at_ms: u64,
 }
 
+/// Same bound as the API's `/player/play`.
+const MAX_QUEUE: usize = 1000;
+
 pub enum Cmd {
     Play { items: Vec<QueueItem>, start: usize },
     Jump(usize),
+    /// Append to the end of the queue without touching what is playing.
+    Enqueue(Vec<QueueItem>),
     Next,
     Prev,
     Pause,
@@ -242,6 +247,13 @@ impl Actor {
                 self.start_track(i).await
             }
             Cmd::Jump(_) => self.error = Some("index out of range".into()),
+            Cmd::Enqueue(items) => {
+                if self.queue.len() + items.len() <= MAX_QUEUE {
+                    self.queue.extend(items);
+                } else {
+                    self.error = Some("queue is full".into());
+                }
+            }
             Cmd::Next => match self.index {
                 Some(i) if i + 1 < self.queue.len() => {
                     self.errors_in_row = 0;

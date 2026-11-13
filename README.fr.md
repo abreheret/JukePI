@@ -36,6 +36,7 @@ Chaque dossier a son README, un document d'architecture et des notes de dévelop
 - Recherche plein texte insensible aux accents, en environ 15 ms.
 - Le serveur s'annonce en mDNS : l'appli le trouve sans saisir d'adresse.
 - Déplacement, coupure du son, volume et file d'attente pour l'ampli (HEOS n'a pas de commande de déplacement : le serveur relance le flux à la trame voulue).
+- **« Même style »** : quand la file arrive à son dernier titre, l'appli enchaîne sur des titres de ta bibliothèque qui y ressemblent (similarité Last.fm si elle est configurée, sinon tes genres), en favorisant les artistes que tu écoutes le plus. Ce que joue l'ampli peut être **scrobblé** sur ton compte Last.fm.
 - Android : commandes de l'écran verrouillé et de la notification, touches de volume qui pilotent l'ampli, **téléchargements** avec reprise, **mode hors connexion** avec lecture locale, sortie commutable (ampli / téléphone) qui emporte la file avec elle.
 - Développé pour **Android 17**, y compris sa nouvelle permission de réseau local.
 
@@ -48,7 +49,14 @@ Chaque dossier a son README, un document d'architecture et des notes de dévelop
 
 ## Démarrage rapide
 
-1. **Serveur** : voir [`music-server/README.fr.md`](music-server/README.fr.md) et [`music-server/docs/OPERATIONS.fr.md`](music-server/docs/OPERATIONS.fr.md). Régler `MUSIC_ROOT` (votre bibliothèque) et `MUSIC_PUBLIC_URL` (l'adresse du Pi vue par l'ampli), puis `PI=pi@raspberrypi.local ./music-server/deploy/deploy.sh`.
+1. **Serveur** : voir [`music-server/README.fr.md`](music-server/README.fr.md) et [`music-server/docs/OPERATIONS.fr.md`](music-server/docs/OPERATIONS.fr.md).
+   ```bash
+   cd music-server
+   cp deploy/music-server.env.example deploy/music-server.env   # git ignore ce fichier : vos réglages et secrets vont ici
+   $EDITOR deploy/music-server.env                              # MUSIC_PUBLIC_URL (adresse du Pi vue par l'ampli), MUSIC_ROOT, Last.fm...
+   PI=pi@raspberrypi.local ./deploy/deploy.sh                   # tests, compilation, envoi, installation, redémarrage
+   ```
+   **Facultatif, Last.fm** (« même style » et scrobbling) : créer une application sur <https://www.last.fm/api/account/create>, mettre sa clé et son « shared secret » dans `deploy/music-server.env` (`LASTFM_API_KEY`, `LASTFM_SECRET`), redéployer, puis lier son compte une fois : `MUSIC_SERVER=<ip-du-pi>:8765 ./scripts/lastfm-link.sh`.
 2. **Appli** : voir [`android-app/README.fr.md`](android-app/README.fr.md) : `./android-app/install.sh` avec un téléphone branché en USB.
 3. Ouvrir l'appli : elle trouve le serveur toute seule (ou saisir son adresse dans les réglages), accorder la permission de réseau local, et jouer.
 
@@ -60,6 +68,7 @@ Fonctionne et sert au quotidien sur l'installation de l'auteur (une bibliothèqu
 
 - L'API n'a **aucune authentification** : à n'exécuter que sur un réseau local de confiance.
 - La recherche de pochettes en ligne facultative (`COVERS_ONLINE=1`) envoie des noms d'artistes et d'albums à MusicBrainz et au Cover Art Archive. Elle est désactivée par défaut.
+- Les fonctions Last.fm facultatives (`LASTFM_API_KEY`, `LASTFM_SECRET`) envoient à Last.fm l'artiste et le titre en cours, et avec le scrobbling la liste de ce que joue l'ampli. Elles sont inactives sans clé ; les secrets sont dans l'unité systemd du Pi, jamais dans le dépôt. Voir [OPERATIONS](music-server/docs/OPERATIONS.fr.md#activer-lastfm-vie-privée).
 - Les adresses IP de la documentation (`192.168.1.50`, `192.168.1.60`) sont des exemples. Rien dans le dépôt ne contient d'identifiants.
 
 ## Licence et marques

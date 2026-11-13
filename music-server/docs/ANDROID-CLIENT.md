@@ -69,6 +69,14 @@ nsd.discoverServices("_music-server._tcp", NsdManager.PROTOCOL_DNS_SD, listener)
 - **"Is the server there?" probe**: `GET /health` must answer `{"status":"ok"}`. Check the body, not just the connection: the Pi's address may belong to another device on another network. Short timeouts (1.5 s).
 - On the phone, playback and seeking are local: the server's `/player/seek` only concerns the amplifier.
 
+## 5 ter. "More like this" (suggestions)
+
+- `GET /recommendations?track_id=<current>&limit=20&exclude=<queued ids, comma separated>` gives tracks of the library that sound like the current one (see the [README](../README.md)). Each item has a `reason`; `source` says whether Last.fm contributed (`lastfm`) or only the local tags (`local`).
+- Append them: amplifier `POST /player/enqueue {"track_ids":[...]}` (the queue must not be empty); phone `addMediaItems`. If playback had ended (status `stopped` on the last track), jump to the first new item.
+- **Automatic chaining** (the reference app does it by default): when the queue's last track starts (`index == queue.size-1`, status `playing` or `loading`), ask once for that track and append. Do it only once per track, only when the server is `Online`, and tell the user in a message what was added.
+- Tell the user where the suggestions come from: with a Last.fm key on the server, the artist and title are sent to Last.fm.
+- The call is cheap (cache hit: a few tens of milliseconds; first call about 0.5 s).
+
 ## 6. Pitfalls
 
 - **Two outputs**: the amplifier (the server drives it, the app only commands) or the phone itself (the app plays `/stream/{id}.mp3` or a downloaded file). The `/player/*` API only concerns the amplifier.

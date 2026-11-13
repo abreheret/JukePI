@@ -36,6 +36,7 @@ Each folder has its own README, an `ARCHITECTURE` document and development notes
 - Accent-insensitive full-text search answering in about 15 ms.
 - The server announces itself with mDNS: the app finds it without typing an address.
 - Seek, mute, volume and queue control for the amplifier (HEOS has no seek command: the server restarts the stream at the wanted frame).
+- **"More like this"**: when the queue reaches its last track, the app keeps going with tracks of your library that are similar (Last.fm similarity when configured, your genres otherwise), leaning towards the artists you listen to most. What the amplifier plays can be **scrobbled** to your Last.fm account.
 - Android: lock-screen and notification controls, volume keys drive the amplifier, **downloads** with resume, **offline mode** with local playback, switchable output (amplifier / phone) that carries the queue over.
 - Developed against **Android 17**, including its new local-network permission.
 
@@ -48,7 +49,14 @@ Each folder has its own README, an `ARCHITECTURE` document and development notes
 
 ## Quick start
 
-1. **Server**: see [`music-server/README.md`](music-server/README.md) and [`music-server/docs/OPERATIONS.md`](music-server/docs/OPERATIONS.md). Set `MUSIC_ROOT` (your library) and `MUSIC_PUBLIC_URL` (the Pi's address as the amplifier sees it), then `PI=pi@raspberrypi.local ./music-server/deploy/deploy.sh`.
+1. **Server**: see [`music-server/README.md`](music-server/README.md) and [`music-server/docs/OPERATIONS.md`](music-server/docs/OPERATIONS.md).
+   ```bash
+   cd music-server
+   cp deploy/music-server.env.example deploy/music-server.env   # git ignores this file: your settings and secrets go here
+   $EDITOR deploy/music-server.env                              # MUSIC_PUBLIC_URL (the Pi's address as the amplifier sees it), MUSIC_ROOT, Last.fm...
+   PI=pi@raspberrypi.local ./deploy/deploy.sh                   # tests, build, upload, install, restart
+   ```
+   **Optional, Last.fm** ("more like this" and scrobbling): create an application on <https://www.last.fm/api/account/create>, put its key and shared secret in `deploy/music-server.env` (`LASTFM_API_KEY`, `LASTFM_SECRET`), redeploy, then link your account once: `MUSIC_SERVER=<pi-ip>:8765 ./scripts/lastfm-link.sh`.
 2. **App**: see [`android-app/README.md`](android-app/README.md): `./android-app/install.sh` with a phone connected over USB.
 3. Open the app: it finds the server by itself (or type its address in Settings), grant the local-network permission, and play.
 
@@ -60,6 +68,7 @@ Working and used day to day on the author's setup (a 43,794-track library, a Pi 
 
 - The API has **no authentication**: run it on a trusted local network only.
 - The optional online cover lookup (`COVERS_ONLINE=1`) sends artist and album names to MusicBrainz and the Cover Art Archive. It is off by default.
+- The optional Last.fm features (`LASTFM_API_KEY`, `LASTFM_SECRET`) send the artist and title being played to Last.fm, and with scrobbling the list of what the amplifier plays. They are off without a key; secrets live in the systemd unit of the Pi, never in the repository. See [OPERATIONS](music-server/docs/OPERATIONS.md#enabling-lastfm-privacy).
 - IP addresses in the documentation (`192.168.1.50`, `192.168.1.60`) are examples. Nothing in the repository holds credentials.
 
 ## Licence and trademarks

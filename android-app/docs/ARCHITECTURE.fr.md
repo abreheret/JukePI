@@ -28,7 +28,7 @@ Une seule activité Compose. Un `AppViewModel` unique garde l'adresse du serveur
 | `LocalLibrary.kt`, `LocalCatalog.kt` | Stockage des albums téléchargés ; parcours et recherche locaux |
 | `DownloadWorker.kt` | Téléchargement d'un album (WorkManager) |
 | `AppViewModel.kt` | Adresse (mémorisée), `Api`, découverte, pile `Detail`, commandes, flux SSE avec reconnexion |
-| `Api.kt` | Client du serveur : listes, album, recherche, commandes du lecteur, flux SSE |
+| `Api.kt` | Client du serveur : listes, album, recherche, recommandations, commandes du lecteur (dont enqueue), flux SSE |
 | `Models.kt` | Modèles JSON (`Album`, `Track`, `PlayerSnapshot`…) et `PlayerUi` |
 | `Discovery.kt` | Recherche du serveur par mDNS (`_music-server._tcp`) |
 | `Screens.kt` | Grille d'albums, page album, artistes, recherche, réglages |
@@ -105,6 +105,12 @@ Quand la sortie est l'ampli, le téléphone ne joue rien, mais Android affiche l
 - **Boutons** : −30 / −10 / +10 / +30 s dans le lecteur plein écran ; −10 / +10 s dans le mini-lecteur ; envoi de `POST /player/seek {"delta_ms":±N}` (le serveur calcule à partir de **sa** position, pas de celle de l'écran).
 - **Notification et écran verrouillé** : `setMediaButtonPreferences` avec deux `CommandButton` (`ICON_SKIP_BACK_10`, `ICON_SKIP_FORWARD_10`) placés dans l'emplacement **`SLOT_OVERFLOW`**. Sans emplacement explicite, ils prenaient la place de Précédent/Suivant (vérifié avec `dumpsys notification`). Résultat : Précédent, Pause, Suivant, −10 s, +10 s (cinq boutons, le maximum d'Android). Le bouton +10 s de la notification a été testé par un vrai appui.
 - **Coupure du son** : bouton haut-parleur dans le lecteur plein écran (à côté du curseur de volume, qui est grisé et affiche « muet ») et dans la fenêtre de volume ; `POST /player/mute`.
+
+## Suggestions (« même style »)
+
+`AppViewModel.suggestSimilar()` demande `GET /recommendations` pour le titre en cours (en excluant ce qui est en file) et ajoute la réponse : `POST /player/enqueue` sur l'ampli, `addMediaItems` sur le téléphone (si le lecteur du téléphone était arrivé au bout, il saute au premier nouveau titre ; sur l'ampli, s'il était arrêté, il saute à l'ancienne taille de la file). Elle demande le serveur (`Server.Online`), affiche le résultat dans la barre de message et ne tourne jamais deux fois en même temps (`suggesting`).
+
+Enchaînement automatique (`autoSimilar`, activé par défaut, dans les réglages) : un collecteur de l'état du lecteur l'appelle une fois par titre (`autoDoneFor`) quand le dernier titre de la file est `playing` ou `loading`. C'est le serveur qui décide d'où viennent les suggestions ; l'appli indique seulement dans les réglages que le serveur peut interroger Last.fm.
 
 ## Icône
 

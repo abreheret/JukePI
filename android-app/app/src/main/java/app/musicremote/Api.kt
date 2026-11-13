@@ -97,6 +97,12 @@ class Api(val base: String) {
     suspend fun search(q: String, limit: Int = 12): SearchResult =
         get(url("/search", "q" to q, "limit" to limit)) { json.decodeFromString<SearchResult>(it) }
 
+    /** Tracks of the library that sound like `trackId`, never the ones in `exclude` (what is already queued). */
+    suspend fun recommendations(trackId: Long, limit: Int = 20, exclude: List<Long> = emptyList()): Recommendations =
+        get(url("/recommendations", "track_id" to trackId, "limit" to limit, "exclude" to exclude.joinToString(",").ifEmpty { null })) {
+            json.decodeFromString<Recommendations>(it)
+        }
+
     suspend fun player(): PlayerSnapshot = get("/player") { json.decodeFromString<PlayerSnapshot>(it) }
 
     /**
@@ -142,6 +148,9 @@ class Api(val base: String) {
             put("track_ids", buildJsonArray { ids.forEach { add(JsonPrimitive(it)) } })
             put("start", start)
         })
+
+    suspend fun enqueue(ids: List<Long>) =
+        post("/player/enqueue", buildJsonObject { put("track_ids", buildJsonArray { ids.forEach { add(JsonPrimitive(it)) } }) })
 
     suspend fun jump(index: Int) = post("/player/jump", buildJsonObject { put("index", index) })
     suspend fun pause() = post("/player/pause")

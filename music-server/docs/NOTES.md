@@ -18,6 +18,9 @@ Key decisions, lessons learned and roadmap of the server. The detailed measureme
 | FTS5 index rebuilt from the tables after a scan that changed something | Simple and fast enough (3 s for 43,794 tracks on a Pi 4) |
 | Online cover lookup is **opt-in** | It sends artist and album names to third parties |
 | The index lives on the SD card, the library disk is read-only | A disk unplugged or "dirty" must never be able to corrupt anything |
+| Recommendations come from **Last.fm similarity filtered by the library**, with the local tags as a fallback | The library is the only thing that can be played, so whatever Last.fm suggests and the library lacks is useless; a local fallback keeps the feature working without a key or offline |
+| Last.fm is **opt-in at two levels** (key: suggestions; key + secret + linked account: scrobbling) and the account is linked in the browser | Nothing is sent without configuration, and the Last.fm password never reaches the server |
+| Secrets live in a root-only file on the Pi, installed from a git-ignored local file | The repository can be public without ever holding a key |
 | Cross-compile with `zig` + `cargo-zigbuild` | The Pi is better left to its other jobs than to compile |
 
 ## Lessons learned
@@ -47,7 +50,9 @@ Key decisions, lessons learned and roadmap of the server. The detailed measureme
 
 ## Roadmap
 
-- [ ] Recommendations ("more like this"): tags + listening history first, audio embeddings later.
+- [x] Recommendations ("more like this"): Last.fm similarity + local tags + listening history. [ ] Audio embeddings later.
+- [ ] Not yet checked by a real listen: scrobbles appearing on the profile, the automatic chaining at the end of an album.
+- [ ] Scrobble what the phone plays too (the app would have to report its listens to the server).
 - [ ] Typo-tolerant search (trigrams or edit distance); unify artist spellings ("AC/DC" / "Ac-Dc").
 - [ ] Pre-generate 300 px thumbnails after a scan if the first opening of the grid is slow.
 - [ ] Disk watching (`notify`) instead of `POST /scan`.

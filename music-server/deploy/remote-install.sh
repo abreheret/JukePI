@@ -11,6 +11,15 @@ else
   echo "systemd unit already present: left untouched"
 fi
 rm -f /tmp/music-server.service
+if [ -f /tmp/music-server.env ]; then
+  sudo install -d -m 755 /etc/music-server
+  sudo install -m 600 -o root -g root /tmp/music-server.env /etc/music-server/music-server.env
+  sudo install -d -m 755 /etc/systemd/system/music-server.service.d
+  sudo install -m 644 /tmp/music-server-envfile.conf /etc/systemd/system/music-server.service.d/10-env-file.conf
+  rm -f /tmp/music-server.env
+  echo "settings installed: /etc/music-server/music-server.env (root only)"
+fi
+rm -f /tmp/music-server-envfile.conf
 sudo systemctl daemon-reload
 sudo systemctl enable music-server
 sudo systemctl restart music-server

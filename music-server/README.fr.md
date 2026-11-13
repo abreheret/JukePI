@@ -20,7 +20,8 @@ C'est la moitié serveur de JukePI ; la télécommande Android est dans [`../and
 | Annonce mDNS (`_music-server._tcp`) pour que l'appli trouve le serveur | fait, vérifié |
 | Recherche plein texte (titres, albums, artistes ; accents, préfixes) | fait, testée (10 à 17 ms) |
 | Pochettes en ligne (MusicBrainz / Cover Art Archive) | fait, **désactivé par défaut**, testé avec un album public |
-| Recommandations (« du même style ») | pas fait |
+| Recommandations (« même style ») : similarité Last.fm + genres locaux, pondérées par ton historique d'écoute | fait, testé sur la vraie bibliothèque ; l'enchaînement automatique en fin d'album n'est pas encore vérifié par une écoute complète |
+| Scrobbling de ce que joue l'ampli vers Last.fm | fait, compte lié ; premier scrobble pas encore vérifié sur le profil |
 
 ## Architecture en une image
 
@@ -48,6 +49,9 @@ Détails : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.fr.md).
 | `COVERS_ONLINE` | (absent) | `1` pour activer la recherche de pochettes en ligne. **Envoie les noms d'artistes et d'albums sans pochette locale à musicbrainz.org et coverartarchive.org** |
 | `MUSICBRAINZ_CONTACT` | (vide) | Adresse ou URL de contact ajoutée au User-Agent (MusicBrainz la demande ; à renseigner avec votre adresse) |
 | `COVERS_ONLINE_DELAY_S` | `60` | Délai avant la première recherche en ligne |
+| `LASTFM_API_KEY` | (vide) | Active la similarité Last.fm. **Envoie à ws.audioscrobbler.com l'artiste et le titre du morceau pour lequel on demande une suggestion.** À garder dans un fragment systemd, jamais dans le dépôt |
+| `LASTFM_SECRET` | (vide) | « Shared secret » de ton application Last.fm : nécessaire (avec un compte lié) pour scrobbler. Mêmes précautions que la clé |
+| `LASTFM_USER` | (vide) | Compte dont l'historique d'écoute pondère les suggestions quand aucun compte n'est lié ; une fois un compte lié, son nom est utilisé |
 | `MUSIC_MDNS` | `1` | `0` pour ne pas annoncer le serveur en mDNS |
 | `MUSIC_MDNS_NAME` | `Music Server` | Nom de l'instance affiché dans l'appli |
 | `MUSIC_NO_SCAN` | (absent) | Si défini, pas de scan au démarrage |
@@ -78,6 +82,18 @@ Toutes les réponses sont en JSON. Pas d'authentification : réseau local de con
 
 Les titres sont servis **par identifiant numérique** : toutes les URL données à l'ampli sont en ASCII pur (voir pourquoi dans [docs/HEOS-FINDINGS.md](docs/HEOS-FINDINGS.fr.md), section 3).
 
+### Recommandations et Last.fm
+
+| Requête | Effet |
+| --- | --- |
+| `GET /recommendations?track_id=N&limit=20&exclude=1,2` | titres de la bibliothèque qui ressemblent au titre `N` : `{seed_track_id, source: "lastfm"\|"local", lastfm_enabled, taste, items}`. Chaque élément est un titre plus `reason` (`lastfm_track`, `lastfm_artist`, `same_genre`, `same_artist`). `exclude` : ids déjà en file. `limit` 1 à 100 (20 par défaut). N'échoue jamais à cause de Last.fm : sans clé, il répond d'après les tags locaux |
+| `GET /lastfm` | `{similarity, scrobbling, user, needs_secret, auth_pending}`. Ne contient jamais de clé, de secret ni de session |
+| `POST /lastfm/auth/start` | lier un compte, étape 1 : renvoie `{url}` à ouvrir dans un navigateur pour autoriser. Demande `LASTFM_API_KEY` et `LASTFM_SECRET` |
+| `POST /lastfm/auth/finish` | étape 2, une fois autorisé : enregistre la session, le scrobbling démarre |
+| `DELETE /lastfm/session` | délier le compte (`204`) |
+
+La construction des suggestions est décrite dans [docs/ARCHITECTURE.md](docs/ARCHITECTURE.fr.md#recommandations-et-lastfm) ; la mise en place de Last.fm dans [docs/OPERATIONS.md](docs/OPERATIONS.fr.md#activer-lastfm-vie-privée). Comme le reste de l'API, `/lastfm/*` n'a **aucune authentification** : quiconque est sur le réseau peut délier le compte.
+
 ### Lecteur (ampli)
 
 | Requête | Effet |
@@ -87,6 +103,7 @@ Les titres sont servis **par identifiant numérique** : toutes les URL données 
 | `POST /player/play` | corps `{"album_id":N}` ou `{"track_id":N}` ou `{"track_ids":[...],"start":0}` : remplace la file et lance la lecture |
 | `POST /player/next`, `/previous`, `/pause`, `/resume`, `/stop` | commandes (réponse `202` + instantané) |
 | `POST /player/jump` | corps `{"index":N}` |
+| `POST /player/enqueue` | corps `{"track_ids":[...]}` : ajoute à la fin de la file sans toucher au titre en cours (`400` si la file est vide : utiliser `/player/play`) |
 | `POST /player/volume` | corps `{"level":0-100}` |
 | `POST /player/mute` | corps `{"mute":true\|false}` (le volume est conservé) |
 | `POST /player/seek` | corps `{"position_ms":N}` (position absolue) ou `{"delta_ms":±N}` (relatif à la position actuelle). **Environ 1 s de silence** : le flux est relancé à l'endroit voulu |

@@ -25,6 +25,7 @@ Target: **Android 17 (API 37)** (developed on a Pixel 8a). Kotlin, Jetpack Compo
 | **Download albums** (Download / Cancel / Remove on the album page, resumes after interruption) | done, tested (6 tracks, 47 MB in ~3 s) |
 | **"Downloaded" tab**: everything on the phone, state and size of each album, free space, management | done, verified |
 | **Offline mode**: automatic detection, banner, albums / artists / search limited to downloaded music, output forced to the phone | done, tested by cutting the network |
+| **"Same style"** (full-screen player button) and **automatic continuation**: when the last queued track starts, tracks of the library similar to it are appended (setting, on by default; needs the server) | done; the server side is tested on the real library; chaining at the end of a real album not yet checked by a full listen |
 | Interrupted download resumes at the first missing track | written; not tested by killing the app mid-download |
 
 ## Known limits

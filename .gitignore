@@ -30,6 +30,7 @@ __pycache__/
 *.key
 *.jks
 *.keystore
+*.env
 
 # Assistant instruction files (local only)
 CLAUDE.md

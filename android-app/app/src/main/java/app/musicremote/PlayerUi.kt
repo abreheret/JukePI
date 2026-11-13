@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.PlayArrow
@@ -139,6 +140,14 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                         shape = SegmentedButtonDefaults.itemShape(1, 2),
                         icon = { SegmentedButtonDefaults.Icon(output == Output.Phone) { Icon(Icons.Default.Smartphone, null, Modifier.size(18.dp)) } },
                     ) { Text("Téléphone") }
+                }
+
+                if (cur != null) {
+                    FilledTonalButton(onClick = { vm.suggestSimilar() }, enabled = !vm.suggesting && server == Server.Online, modifier = Modifier.padding(top = 8.dp)) {
+                        if (vm.suggesting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Même style")
+                    }
                 }
 
                 // Draggable timeline. The Denon cannot seek in a stream: the server restarts it at the wanted frame
