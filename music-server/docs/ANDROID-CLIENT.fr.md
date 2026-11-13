@@ -73,7 +73,7 @@ nsd.discoverServices("_music-server._tcp", NsdManager.PROTOCOL_DNS_SD, listener)
 
 - `GET /recommendations?track_id=<en cours>&limit=20&exclude=<ids en file, séparés par des virgules>` renvoie des titres de la bibliothèque qui ressemblent au titre en cours (voir le [README](../README.fr.md)). Chaque élément a un `reason` ; `source` indique si Last.fm a contribué (`lastfm`) ou seulement les tags locaux (`local`).
 - Les ajouter : ampli `POST /player/enqueue {"track_ids":[...]}` (la file ne doit pas être vide) ; téléphone `addMediaItems`. Si la lecture était terminée (statut `stopped` sur le dernier titre), sauter au premier nouveau titre.
-- **Enchaînement automatique** (l'appli de référence le fait par défaut) : quand le dernier titre de la file démarre (`index == taille-1`, statut `playing` ou `loading`), demander une fois pour ce titre et ajouter. Une seule fois par titre, seulement si le serveur est `Online`, et signaler à l'utilisateur ce qui a été ajouté.
+- **Suggestions automatiques** (l'appli de référence le fait par défaut) : juste après le début d'une file, demander une fois, avec le dernier titre de la file comme point de départ, environ 10 titres et les ajouter, pour que l'utilisateur voie la suite et puisse la passer ; redemander quand le dernier titre de la file démarre. Une seule fois par file / par titre, seulement si le serveur est `Online`, et garder les ids reçus (`reason`) pour que la file puisse les marquer comme suggestions.
 - Dire à l'utilisateur d'où viennent les suggestions : avec une clé Last.fm sur le serveur, l'artiste et le titre sont envoyés à Last.fm.
 - L'appel est léger (cache : quelques dizaines de millisecondes ; premier appel environ 0,5 s).
 

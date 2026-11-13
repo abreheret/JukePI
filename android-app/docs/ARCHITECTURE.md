@@ -109,7 +109,7 @@ When the output is the amplifier, the phone plays nothing, but Android shows the
 
 `AppViewModel.suggestSimilar()` asks `GET /recommendations` for the current track (excluding what is queued) and appends the answer: `POST /player/enqueue` on the amplifier, `addMediaItems` on the phone (if the phone's player had ended, it jumps to the first new track; on the amplifier, if it had stopped, it jumps to the old queue size). It needs the server (`Server.Online`), shows what happened in the snackbar and never runs twice at once (`suggesting`).
 
-Automatic continuation (`autoSimilar`, on by default, in Settings): a collector on the UI player state calls it once per track (`autoDoneFor`) when the queue's last track is `playing` or `loading`. The server decides where the suggestions come from; the app only says in Settings that the server may query Last.fm.
+Automatic suggestions (`autoSimilar`, on by default, in Settings): a collector on the UI player state calls it (`maybeAutoSuggest`) **right after a queue starts** (no track of the queue is known as suggested yet): 10 tracks close to the queue's last track are appended; and again when the queue's last track starts, so it never runs dry. Each attempt is made once (`autoDoneKey`: nothing is retried when nothing was found). The suggested tracks are remembered (`suggested`: id -> why, kept in the preferences, 400 at most) and the queue of the full-screen player marks them: a star instead of the number, the reason (Last.fm, same genre, same artist) and a "Suggestions" heading before the first one. The server decides where the suggestions come from; the app only says in Settings that the server may query Last.fm.
 
 ## Icon
 

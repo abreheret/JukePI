@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -25,6 +26,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+/** Suggested tracks added behind a queue that just started, and again when its last track starts. */
+private const val AUTO_BATCH = 10
 
 enum class Tab { Albums, Downloaded, Artists, Search }
 
@@ -85,30 +89,59 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var suggesting by mutableStateOf(false)
         private set
 
-    /** Keep the music going: when the last track of the queue starts, suggestions are appended by themselves. */
+    /**
+     * Suggestions behind what is playing: right after a queue starts, a few tracks close to it are added (the user sees
+     * them in the queue, marked, and skips what he does not want); when the last track starts, more are added, so the
+     * music never stops by itself.
+     */
     var autoSimilar by mutableStateOf(prefs.getBoolean("auto_similar", true))
         private set
     fun updateAutoSimilar(on: Boolean) { autoSimilar = on; prefs.edit().putBoolean("auto_similar", on).apply() }
-    private var autoDoneFor: Long? = null
+
+    /** The tracks the server suggested (id -> why): remembered, so the queue can label them even after a restart. */
+    val suggested = mutableStateMapOf<Long, String>()
+    private val suggestedOrder = ArrayDeque<Long>()
+    private var autoDoneKey: String? = null
 
     init {
+        for (e in prefs.getString("suggested", "").orEmpty().split(';')) {
+            val p = e.split('=', limit = 2)
+            val id = p.getOrNull(0)?.toLongOrNull() ?: continue
+            suggested[id] = p.getOrElse(1) { "" }
+            suggestedOrder.addLast(id)
+        }
         viewModelScope.launch { player.collect { maybeAutoSuggest(it.snap) } }
     }
 
-    private fun maybeAutoSuggest(s: PlayerSnapshot) {
-        val cur = s.current ?: return
-        if (!autoSimilar || s.queue.isEmpty() || s.index != s.queue.lastIndex) return
-        if (s.status != "playing" && s.status != "loading") return
-        if (autoDoneFor == cur.trackId) return
-        autoDoneFor = cur.trackId
-        suggestSimilar(auto = true)
+    private fun rememberSuggested(items: List<Track>) {
+        for (t in items) if (suggested.put(t.id, t.reason.orEmpty()) == null) suggestedOrder.addLast(t.id)
+        while (suggestedOrder.size > 400) suggested.remove(suggestedOrder.removeFirst())
+        prefs.edit().putString("suggested", suggestedOrder.joinToString(";") { "$it=${suggested[it].orEmpty()}" }).apply()
     }
 
-    /** Append tracks similar to the current one to the queue (Denon or phone). Needs the server. */
-    fun suggestSimilar(auto: Boolean = false) {
+    private fun maybeAutoSuggest(s: PlayerSnapshot) {
+        val q = s.queue
+        if (!autoSimilar || q.isEmpty()) return
+        if (s.status != "playing" && s.status != "loading") return
+        val hasSuggestions = q.any { it.trackId in suggested }
+        val key = when {
+            !hasSuggestions -> "start:${q.first().trackId}" // a queue just started: a few suggestions behind it
+            s.index == q.lastIndex -> "end:${q.last().trackId}" // its last track started: more, so it never runs dry
+            else -> { autoDoneKey = null; return } // suggestions are there: ready for the next queue
+        }
+        if (autoDoneKey == key) return // already tried (also when nothing was found: no retry loop)
+        autoDoneKey = key
+        suggestSimilar(auto = true, seed = q.last().trackId, limit = AUTO_BATCH)
+    }
+
+    /**
+     * Append tracks close to `seed` (default: the current track) to the queue (Denon or phone). Needs the server.
+     * `auto`: nothing is said when it works, the tracks are in the queue, marked.
+     */
+    fun suggestSimilar(auto: Boolean = false, seed: Long? = null, limit: Int = 15) {
         val a = api ?: return
         val snap = player.value.snap
-        val cur = snap.current ?: return
+        val seedId = seed ?: snap.current?.trackId ?: return
         if (PlayerRepository.server.value != Server.Online) {
             if (!auto) message = "Hors connexion : les suggestions demandent le serveur."
             return
@@ -120,11 +153,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val toPhone = phoneMode
         viewModelScope.launch {
             try {
-                val rec = a.recommendations(cur.trackId, 20, snap.queue.map { it.trackId })
+                val rec = a.recommendations(seedId, limit, snap.queue.map { it.trackId })
                 if (rec.items.isEmpty()) {
                     if (!auto) message = "Aucune suggestion trouvée pour ce titre."
                     return@launch
                 }
+                rememberSuggested(rec.items) // before the tracks reach the queue, so they are labelled at once
                 if (toPhone) {
                     val items = rec.items.mapNotNull { phoneItem(it, a.base) }
                     phone { p ->
@@ -136,8 +170,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     a.enqueue(rec.items.map { it.id })
                     if (stopped) a.jump(oldSize)
                 }
-                val how = if (rec.source == "lastfm") "d'après Last.fm" else "d'après les genres de ta bibliothèque"
-                message = "${rec.items.size} titres ajoutés à la file ($how)."
+                if (!auto) {
+                    val how = if (rec.source == "lastfm") "d'après Last.fm" else "d'après les genres de ta bibliothèque"
+                    message = "${rec.items.size} titres ajoutés à la file ($how)."
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

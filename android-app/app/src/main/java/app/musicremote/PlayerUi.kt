@@ -206,22 +206,43 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
         }
         if (s.queue.size > 1) {
             item { Text("File d'attente", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 20.dp, bottom = 4.dp)) }
+            // The tracks the server suggested are marked (a star, why) and start under a "Suggestions" heading.
+            val firstSuggested = s.queue.indexOfFirst { it.trackId in vm.suggested }
             itemsIndexed(s.queue, key = { i, q -> "$i-${q.trackId}" }) { i, q ->
                 val current = i == s.index
-                ListItem(
-                    modifier = Modifier.clickable { vm.jump(i) },
-                    leadingContent = { Text("${i + 1}", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                    headlineContent = {
-                        Text(q.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal)
-                    },
-                    supportingContent = q.artist?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
-                    trailingContent = { Text(formatMs(q.durationMs), color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                )
+                val why = vm.suggested[q.trackId]
+                Column {
+                    if (i == firstSuggested) {
+                        Text("Suggestions", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 2.dp))
+                    }
+                    ListItem(
+                        modifier = Modifier.clickable { vm.jump(i) },
+                        leadingContent = {
+                            if (why != null) Icon(Icons.Default.AutoAwesome, "Suggestion", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                            else Text("${i + 1}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        },
+                        headlineContent = {
+                            Text(q.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal)
+                        },
+                        supportingContent = listOfNotNull(q.artist, why?.let(::suggestionLabel)).takeIf { it.isNotEmpty() }?.let { parts ->
+                            { Text(parts.joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        },
+                        trailingContent = { Text(formatMs(q.durationMs), color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    )
+                }
             }
         }
     }
+}
+
+/** Why the server suggested a track (`reason` of /recommendations). */
+private fun suggestionLabel(reason: String) = when (reason) {
+    "lastfm_track", "lastfm_artist" -> "Last.fm"
+    "same_genre" -> "même genre"
+    "same_artist" -> "même artiste"
+    else -> "suggestion"
 }
 
 @Composable

@@ -38,7 +38,7 @@ Each folder has its own README, an `ARCHITECTURE` document and development notes
 - Accent-insensitive full-text search answering in about 15 ms, tolerant to typos ("beatels" finds The Beatles), one entry per artist whatever the spelling.
 - The server announces itself with mDNS: the app finds it without typing an address.
 - Seek, mute, volume and queue control for the amplifier (HEOS has no seek command: the server restarts the stream at the wanted frame).
-- **"More like this"**: when the queue reaches its last track, the app keeps going with tracks of your library that are similar (Last.fm similarity when configured, your genres otherwise), leaning towards the artists you listen to most. What the amplifier plays can be **scrobbled** to your Last.fm account.
+- **"More like this"**: as soon as you start an album, a few tracks of your library that are similar are added behind it in the queue (Last.fm similarity when configured, your genres otherwise, leaning towards the artists you listen to most), marked so you can skip what you do not want; more follow when the queue runs out. What the amplifier plays can be **scrobbled** to your Last.fm account.
 - Android: lock-screen and notification controls, volume keys drive the amplifier, **downloads** with resume, **offline mode** with local playback, switchable output (amplifier / phone) that carries the queue over.
 - Developed against **Android 17**, including its new local-network permission.
 
