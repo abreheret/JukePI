@@ -2,7 +2,7 @@
 
 🇬🇧 [English](README.md)
 
-[![Server](https://github.com/abreheret/JukePI/actions/workflows/server.yml/badge.svg)](https://github.com/abreheret/JukePI/actions/workflows/server.yml) [![Android](https://github.com/abreheret/JukePI/actions/workflows/android.yml/badge.svg)](https://github.com/abreheret/JukePI/actions/workflows/android.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Server](https://github.com/abreheret/JukePI/actions/workflows/server.yml/badge.svg)](https://github.com/abreheret/JukePI/actions/workflows/server.yml) [![Android](https://github.com/abreheret/JukePI/actions/workflows/android.yml/badge.svg)](https://github.com/abreheret/JukePI/actions/workflows/android.yml) [![Release](https://img.shields.io/github/v/release/abreheret/JukePI)](https://github.com/abreheret/JukePI/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Serveur de musique auto-hébergé pour Raspberry Pi, avec une télécommande Android qui pilote un ampli Denon HEOS ou joue hors connexion sur le téléphone.**
 
