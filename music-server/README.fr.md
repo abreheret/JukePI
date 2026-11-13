@@ -2,6 +2,8 @@
 
 🇬🇧 [English](README.md)
 
+[![Server](https://github.com/abreheret/JukePI/actions/workflows/server.yml/badge.svg)](https://github.com/abreheret/JukePI/actions/workflows/server.yml)
+
 Serveur de musique pour Raspberry Pi qui indexe une bibliothèque MP3 et pilote un ampli **Denon HEOS** via le protocole **HEOS CLI** (développé et testé sur un Denon DRA-900H). L'ampli va chercher lui-même les MP3 en HTTP sur le Pi : aucun audio ne passe par le téléphone.
 
 C'est la moitié serveur de JukePI ; la télécommande Android est dans [`../android-app`](../android-app/README.fr.md).

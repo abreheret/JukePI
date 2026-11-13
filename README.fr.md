@@ -2,6 +2,8 @@
 
 🇬🇧 [English](README.md)
 
+[![Server](https://github.com/abreheret/JukePI/actions/workflows/server.yml/badge.svg)](https://github.com/abreheret/JukePI/actions/workflows/server.yml) [![Android](https://github.com/abreheret/JukePI/actions/workflows/android.yml/badge.svg)](https://github.com/abreheret/JukePI/actions/workflows/android.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **Serveur de musique auto-hébergé pour Raspberry Pi, avec une télécommande Android qui pilote un ampli Denon HEOS ou joue hors connexion sur le téléphone.**
 
 Votre bibliothèque MP3 vit sur un Raspberry Pi. Le Pi l'indexe et la sert en HTTP ; un ampli **Denon HEOS** télécharge lui-même les titres et les joue, pendant qu'une **appli Android** affiche vos albums (pochettes, recherche, artistes) et commande l'ampli. En dehors de chez vous, la même appli joue des **albums téléchargés sur le téléphone**.

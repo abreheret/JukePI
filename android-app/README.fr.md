@@ -2,6 +2,8 @@
 
 🇬🇧 [English](README.md)
 
+[![Android](https://github.com/abreheret/JukePI/actions/workflows/android.yml/badge.svg)](https://github.com/abreheret/JukePI/actions/workflows/android.yml)
+
 La moitié Android de JukePI. Elle parcourt votre bibliothèque (pochettes, albums, artistes, recherche) et soit **pilote un ampli Denon HEOS** par l'intermédiaire du serveur JukePI, soit **joue sur le téléphone lui-même**, y compris **hors connexion** avec des albums téléchargés. Le serveur est dans [`../music-server`](../music-server/README.fr.md).
 
 Cible : **Android 17 (API 37)** (développé sur un Pixel 8a). Kotlin, Jetpack Compose, Material 3 (couleurs dynamiques). L'identifiant de paquet est `app.musicremote`, le nom affiché est « JukePI ».

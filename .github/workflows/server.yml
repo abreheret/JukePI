@@ -1,0 +1,31 @@
+name: Server
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Rust tests and release build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: music-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: music-server
+      - name: Tests
+        run: cargo test --locked
+      - name: Release build compiles
+        run: cargo build --release --locked
