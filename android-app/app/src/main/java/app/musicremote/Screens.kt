@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -284,6 +285,15 @@ fun AlbumDetailScreen(vm: AppViewModel, id: Long, modifier: Modifier = Modifier)
                         Text("Tout lire")
                     }
                     DownloadControl(vm, d)
+                    // All the albums of this artist (not for a compilation, whose "artist" is only the most frequent one).
+                    val artistName = d.album.artist?.takeIf { it.isNotBlank() && !d.album.variousArtists }
+                    if (artistName != null) {
+                        TextButton(onClick = { vm.push(Detail.ArtistPage(artistName)) }) {
+                            Icon(Icons.Default.Album, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Tous les albums de $artistName", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
                 }
             }
             itemsIndexed(d.tracks, key = { _, t -> t.id }) { index, t ->

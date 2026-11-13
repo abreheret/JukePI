@@ -289,6 +289,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (phoneMode) { playOnPhone(detail.tracks, start); markPlayed(detail.album.id) } else act { playAlbum(detail.album.id, start) }
     }
 
+    /**
+     * From the player: all the albums of the artist of what is playing. The album's artist is used when the server is
+     * there (the track's can be "X feat. Y", which has no albums of its own); compilations and offline keep the track's.
+     */
+    fun openArtist(albumId: Long, trackArtist: String) {
+        val a = api
+        if (a == null || PlayerRepository.server.value != Server.Online) { push(Detail.ArtistPage(trackArtist)); return }
+        viewModelScope.launch {
+            val name = try {
+                val album = a.album(albumId).album
+                if (album.variousArtists) null else album.artist?.takeIf { it.isNotBlank() }
+            } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+            push(Detail.ArtistPage(name ?: trackArtist))
+        }
+    }
+
     fun playTrack(t: Track) {
         if (phoneMode) { playOnPhone(listOf(t), 0); markPlayed(t.albumId) } else act { playTracks(listOf(t.id)) }
     }

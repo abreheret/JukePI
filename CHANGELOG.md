@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- A "All albums of <artist>" button on the album page and on the full-screen player opens the artist's page.
 - The "Recent" tab shows the albums you listened to first (listening history kept by the server: `GET /albums?sort=listened`, `POST /history/played`, `DELETE /history`), then albums with a cover.
 
 ## 0.1.0 - 2026-11-13

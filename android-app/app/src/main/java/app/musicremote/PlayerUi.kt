@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Replay30
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Remove
@@ -104,7 +105,16 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                 if (cur != null) Cover(vm.api, cur.albumId, vm.hasCover(cur.albumId), 600, Modifier.fillMaxWidth(0.85f))
                 Spacer(Modifier.height(16.dp))
                 Text(title(s), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-                Text(cur?.artist.orEmpty(), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                val artist = cur?.artist.orEmpty()
+                Text(artist, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                if (cur != null && artist.isNotBlank()) {
+                    // All the albums of the artist of what is playing.
+                    TextButton(onClick = { vm.openArtist(cur.albumId, artist) }) {
+                        Icon(Icons.Default.Album, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Tous les albums de $artist", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
                 Text(
                     when {

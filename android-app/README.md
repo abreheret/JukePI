@@ -16,6 +16,7 @@ Target: **Android 17 (API 37)** (developed on a Pixel 8a). Kotlin, Jetpack Compo
 | Automatic server discovery (mDNS) and manual address entry | done, tested |
 | Album grid with covers, sorting (recent, A–Z, artist, random), infinite scroll | done, tested |
 | **"Recent"** shows what you listened to first (the amplifier's plays are recorded by the server, the phone reports its own), then albums with a cover | done, tested |
+| "All albums of this artist" button on the album page and in the full-screen player | done, tested |
 | Album page, artists, full-text search (type-ahead, typo-tolerant: "Close matches" are labelled) | done, tested |
 | Mini player and full-screen player (previous, pause, next, stop, queue) | done, tested |
 | Draggable timeline, ±10 s and ±30 s buttons | done, tested (on the amplifier the server restarts the stream: ~1 s of silence; on the phone seeking is instant) |

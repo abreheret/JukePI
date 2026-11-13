@@ -16,6 +16,7 @@ Cible : **Android 17 (API 37)** (développé sur un Pixel 8a). Kotlin, Jetpack C
 | Découverte automatique du serveur (mDNS) et saisie manuelle de l'adresse | fait, testé |
 | Grille d'albums avec pochettes, tri (récents, A–Z, artiste, au hasard), défilement infini | fait, testé |
 | **« Récents »** montre d'abord ce que vous avez écouté (les lectures sur l'ampli sont enregistrées par le serveur, le téléphone signale les siennes), puis les albums avec pochette | fait, testé |
+| Bouton « Tous les albums de cet artiste » sur la page d'un album et dans le lecteur plein écran | fait, testé |
 | Page album, artistes, recherche plein texte (au fil de la saisie, tolérante aux fautes : « Résultats approchants » est indiqué) | fait, testé |
 | Mini-lecteur et lecteur plein écran (précédent, pause, suivant, arrêt, file d'attente) | fait, testé |
 | Barre de progression déplaçable, boutons ±10 s et ±30 s | fait, testé (sur l'ampli le serveur relance le flux : ~1 s de silence ; sur le téléphone le déplacement est instantané) |
