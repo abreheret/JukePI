@@ -13,6 +13,12 @@ Votre bibliothèque MP3 vit sur un Raspberry Pi. Le Pi l'indexe et la sert en HT
    └─ albums téléchargés sur le téléphone
 ```
 
+## Aperçu
+
+<table><tr><td align="center"><img src="docs/screenshots/albums.png" width="190" alt="Albums"><br><sub>Albums</sub></td><td align="center"><img src="docs/screenshots/album.png" width="190" alt="Album"><br><sub>Album</sub></td><td align="center"><img src="docs/screenshots/search.png" width="190" alt="Recherche"><br><sub>Recherche</sub></td><td align="center"><img src="docs/screenshots/player.png" width="190" alt="Lecture en cours"><br><sub>Lecture en cours</sub></td><td align="center"><img src="docs/screenshots/downloaded.png" width="190" alt="Téléchargés"><br><sub>Téléchargés</sub></td></tr></table>
+
+Captures de l'appli Android. Les pochettes appartiennent à leurs ayants droit et ne sont montrées qu'à titre d'illustration.
+
 ## Contenu du dépôt
 
 | Dossier | Quoi | Langage |

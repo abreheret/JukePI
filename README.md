@@ -13,6 +13,12 @@ Your MP3 library lives on a Raspberry Pi. The Pi indexes it and serves it over H
    └─ downloaded albums on the phone
 ```
 
+## Preview
+
+<table><tr><td align="center"><img src="docs/screenshots/albums.png" width="190" alt="Albums"><br><sub>Albums</sub></td><td align="center"><img src="docs/screenshots/album.png" width="190" alt="Album"><br><sub>Album</sub></td><td align="center"><img src="docs/screenshots/search.png" width="190" alt="Search"><br><sub>Search</sub></td><td align="center"><img src="docs/screenshots/player.png" width="190" alt="Now playing"><br><sub>Now playing</sub></td><td align="center"><img src="docs/screenshots/downloaded.png" width="190" alt="Downloaded"><br><sub>Downloaded</sub></td></tr></table>
+
+Screenshots of the Android app (the interface is currently in French). Album covers belong to their respective owners and are shown for illustration only.
+
 ## What is in this repository
 
 | Folder | What | Language |
