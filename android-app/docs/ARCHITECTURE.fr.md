@@ -122,7 +122,7 @@ Suggestions automatiques (`autoSimilar`, activées par défaut, dans les réglag
 
 ## Icône
 
-Icône adaptative en vecteurs (`res/drawable/ic_launcher_*.xml`, `res/mipmap-anydpi-v26/`) : une note de musique et deux arcs de signal (de la musique envoyée vers un autre appareil), crème sur vert foncé `#21382B`, contenue dans la zone de sécurité de 66 dp. Une couche `monochrome` est fournie pour les icônes thématiques d'Android 13+. Piège rencontré : la tête de note et la hampe doivent être des tracés séparés, sinon leurs sens de dessin opposés s'annulent là où elles se recouvrent (trou visible).
+Icône adaptative en vecteurs (`res/drawable/ic_launcher_*.xml`, `res/mipmap-anydpi-v26/`) : une framboise (20 grains et trois feuilles vert foncé, le Raspberry Pi) sur fond noir, et devant une note de musique dorée en forme de J (J comme jukebox : barre du haut, hampe, la crosse finit en tête de note) cernée de noir pour rester lisible sur le rouge. La framboise est dans la couche d'arrière-plan, réduite pour tenir dans la fenêtre visible de 72 dp ; le J reste dans la zone de sécurité de 66 dp. Une couche `monochrome` est fournie pour les icônes thématiques d'Android 13+ (le J en plein, la framboise en forme pâle). Piège rencontré : la tête de note et la hampe doivent être des tracés séparés, sinon leurs sens de dessin opposés s'annulent là où elles se recouvrent (trou visible).
 
 ## Pochettes
 

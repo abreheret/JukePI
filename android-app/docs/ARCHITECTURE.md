@@ -121,7 +121,7 @@ Automatic suggestions (`autoSimilar`, on by default, in Settings): a collector o
 
 ## Icon
 
-Adaptive icon in vectors (`res/drawable/ic_launcher_*.xml`, `res/mipmap-anydpi-v26/`): a music note and two signal arcs (music sent to another device), cream on dark green `#21382B`, kept inside the 66 dp safe zone. A `monochrome` layer is provided for Android 13+ themed icons. Pitfall met: the note head and the stem must be separate paths, otherwise their opposite drawing directions cancel where they overlap (visible hole).
+Adaptive icon in vectors (`res/drawable/ic_launcher_*.xml`, `res/mipmap-anydpi-v26/`): a raspberry (20 drupelets and three dark green leaves, the Raspberry Pi) on a black background, and in front a gold music note shaped like a J (J for jukebox: top bar, stem, the hook ends in the note head) with a black outline so it stays readable on the red. The raspberry is drawn in the background layer, scaled to stay inside the visible 72 dp window; the J stays inside the 66 dp safe zone. A `monochrome` layer is provided for Android 13+ themed icons (the J in full, the raspberry as a faint shape). Pitfall met: the note head and the stem must be separate paths, otherwise their opposite drawing directions cancel where they overlap (visible hole).
 
 ## Covers
 
