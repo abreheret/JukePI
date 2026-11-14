@@ -64,7 +64,7 @@ curl -s localhost:8765/health ; curl -s localhost:8765/scan
 
 ## mDNS discovery
 
-Check from a Mac: `dns-sd -B _music-server._tcp local.` (list) then `dns-sd -L "Music Server" _music-server._tcp local.` (host, port, TXT). Expected result: `<hostname>-music.local.:8765`, `version=0.2.0 api=1 path=/`. Multicast (UDP 5353) must get through between the phone and the Pi: same local network, no isolated "guest" network. Avahi (usually already present) and the server coexist on port 5353 without conflict.
+Check from a Mac: `dns-sd -B _music-server._tcp local.` (list) then `dns-sd -L "Music Server" _music-server._tcp local.` (host, port, TXT). Expected result: `<hostname>-music.local.:8765`, `version=0.3.0 api=1 path=/`. Multicast (UDP 5353) must get through between the phone and the Pi: same local network, no isolated "guest" network. Avahi (usually already present) and the server coexist on port 5353 without conflict.
 
 ## Enabling online covers (privacy)
 

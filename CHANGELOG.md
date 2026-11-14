@@ -2,7 +2,7 @@
 
 🇫🇷 Le journal des modifications est en anglais ; la documentation existe en français (`*.fr.md`).
 
-## Unreleased
+## 0.3.0 - 2026-11-14
 
 ### Added
 - **Endless queue, kept by the server.** With the amplifier, the server itself appends 10 suggestions when a queue starts and 10 more when the last or last-but-one track plays, so the music goes on even with no app open. Tracks played recently (300) and tracks already queued are never suggested again; a queue that grows to 1000 forgets what was played long ago. Suggested tracks carry a `reason` in the player snapshot, so every phone marks them the same way (new fields `reason` and `auto_suggest`).
@@ -10,13 +10,14 @@
 - **Download the queue as a playlist.** A "Download" button next to the queue in the player keeps the whole queue on the phone under an automatic name you can edit (main artist + date, e.g. "Michael Jackson and others · Nov 14"). Playlists appear in the "Downloaded" tab, play without the server, can be renamed, resumed and deleted; tracks already on the phone are copied instead of downloaded again. No server change.
 - **Swipe a track of the queue left or right to take it out** (the track being played cannot be removed). A removed suggestion is not proposed again soon. `POST /player/remove`.
 - `POST /player/suggest_more` and `POST /player/auto_suggest`. The "Suggestions after the queue" setting now lives on the server (shared by all phones, kept across restarts).
+- **A new icon**: a gold J-shaped music note (J for jukebox) in front of a raspberry (the Raspberry Pi) on a black background; the themed icon of Android 13+ keeps the J.
 - **The app speaks your language**: English, French, German, Italian, Spanish, Portuguese (European, with a Brazilian variant), Dutch, Catalan, Swedish, Danish, Norwegian, Finnish and Polish, picked from the phone's language (Android 13+ also lists them in Settings > Apps > JukePI > Language). Every text, notification and accessibility label is in `res/values*/strings.xml` (the default is English); sizes, dates and plurals follow the language. The automatic name of a playlist is built in the language of the moment ("Michael Jackson and others · Nov 14"); playlists saved before keep their name.
 
 ### Fixed
 - **A song is no longer suggested twice in two versions.** A suggestion is skipped when the same artist's song is already queued (or was played recently) under another title spelling: "Song (Live)", "Song - 2011 Remaster", "Song (Remastered)"... count as one song. Within one batch, only one version of a song is kept.
 
 ### Upgrading
-- Update the server and the app together. An app of 0.2.0 with the new server would not know the suggestions the server adds and would add its own batch too.
+- Update the server and the app together (0.3.0 both). An app of 0.2.0 with the new server would not know the suggestions the server adds and would add its own batch too.
 
 ## 0.2.0 - 2026-11-13
 
