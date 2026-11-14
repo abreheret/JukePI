@@ -96,6 +96,23 @@ pub fn norm_title(s: &str) -> String {
     online::normalize(s)
 }
 
+/// Words that mark a version of a song in a title suffix ("Song - 2009 Remaster", "Song - Live at ...").
+const VERSION_WORDS: &[&str] = &[
+    "remaster", "remastered", "live", "version", "mix", "remix", "edit", "mono", "stereo", "demo", "acoustic", "radio",
+    "single", "deluxe", "bonus", "instrumental", "session", "unplugged",
+];
+
+/// What makes two tracks of one artist "the same song": the title without its bracketed parts and without a trailing
+/// " - ... remaster / live / version ..." suffix. "Song (Live)", "Song - Remastered 2011" and "Song" share a key.
+pub fn song_title(s: &str) -> String {
+    let lower = s.to_lowercase();
+    let cut = match lower.rfind(" - ") {
+        Some(i) if lower[i + 3..].split(|c: char| !c.is_alphanumeric()).any(|w| VERSION_WORDS.contains(&w)) => &lower[..i],
+        _ => &lower[..],
+    };
+    norm_title(cut)
+}
+
 /// Multiplier for an artist the user listens to a lot.
 fn lift(taste: &Taste, artist_norm: &str) -> f64 {
     1.0 + TASTE_LIFT * taste.get(artist_norm).copied().unwrap_or(0.0).sqrt()
@@ -170,6 +187,8 @@ struct LibTrack {
     id: i64,
     title_norm: String,
     genre_norm: Option<String>,
+    /// `song_title` of the track (a unique key when the title leaves nothing comparable).
+    song: String,
 }
 
 /// Pure ranking: library + similarity data in, ordered suggestions out.
@@ -184,6 +203,7 @@ pub fn pick(
 ) -> Result<Vec<Rec>> {
     // One pass over the library (about 44 000 rows): normalised artist -> its tracks.
     let mut by_artist: HashMap<String, Vec<LibTrack>> = HashMap::new();
+    let mut taken: HashSet<(String, String)> = HashSet::new();
     let mut st = conn.prepare(
         "SELECT t.id, COALESCE(t.artist, a.artist), t.title, t.genre FROM tracks t JOIN albums a ON a.id = t.album_id",
     )?;
@@ -194,14 +214,23 @@ pub fn pick(
         let (id, artist, title, genre) = row?;
         let Some(artist) = artist else { continue };
         let genre_norm = genre.map(|g| online::normalize(&g)).filter(|g| !g.is_empty());
-        by_artist.entry(norm_artist(&artist)).or_default().push(LibTrack { id, title_norm: norm_title(&title), genre_norm });
+        let an = norm_artist(&artist);
+        let mut song = song_title(&title);
+        if song.is_empty() {
+            song = format!("#{id}");
+        }
+        // A song already queued (or being played) is not suggested again in another version.
+        if id == seed.track_id || exclude.contains(&id) {
+            taken.insert((an.clone(), song.clone()));
+        }
+        by_artist.entry(an).or_default().push(LibTrack { id, title_norm: norm_title(&title), genre_norm, song });
     }
 
     let seed_artist = seed.artist.as_deref().map(norm_artist).unwrap_or_default();
     let skip = |id: i64| id == seed.track_id || exclude.contains(&id);
 
-    // (score, track, artist, reason)
-    let mut cands: Vec<(f64, i64, String, &'static str)> = vec![];
+    // (score, track, artist, reason, song)
+    let mut cands: Vec<(f64, i64, String, &'static str, String)> = vec![];
 
     // Exact tracks first: score in 1.0..2.0.
     for s in sim_tracks {
@@ -212,7 +241,7 @@ pub fn pick(
         let t = norm_title(&s.title);
         if let Some(tracks) = by_artist.get(&a) {
             for lt in tracks.iter().filter(|lt| lt.title_norm == t && !skip(lt.id)) {
-                cands.push((1.0 + s.score * lift(taste, &a), lt.id, a.clone(), "lastfm_track"));
+                cands.push((1.0 + s.score * lift(taste, &a), lt.id, a.clone(), "lastfm_track", lt.song.clone()));
             }
         }
     }
@@ -223,10 +252,16 @@ pub fn pick(
             continue;
         }
         if let Some(tracks) = by_artist.get(&a) {
-            let mut ids: Vec<i64> = tracks.iter().map(|t| t.id).filter(|id| !skip(*id)).collect();
-            ids.sort_by_key(|id| shuffle_key(seed.track_id, *id));
-            for id in ids.into_iter().take(MAX_PER_ARTIST) {
-                cands.push((s.score * lift(taste, &a), id, a.clone(), "lastfm_artist"));
+            let mut ts: Vec<&LibTrack> = tracks.iter().filter(|t| !skip(t.id)).collect();
+            ts.sort_by_key(|t| shuffle_key(seed.track_id, t.id));
+            // At most one version of each song, and not a song that is already queued.
+            let mut songs: HashSet<&str> = HashSet::new();
+            for t in ts
+                .into_iter()
+                .filter(|t| !taken.contains(&(a.clone(), t.song.clone())) && songs.insert(t.song.as_str()))
+                .take(MAX_PER_ARTIST)
+            {
+                cands.push((s.score * lift(taste, &a), t.id, a.clone(), "lastfm_artist", t.song.clone()));
             }
         }
     }
@@ -235,15 +270,19 @@ pub fn pick(
     let mut out: Vec<Rec> = vec![];
     let mut seen: HashSet<i64> = HashSet::new();
     let mut per_artist: HashMap<String, usize> = HashMap::new();
-    for (_, id, artist, reason) in cands {
+    // Songs (artist, title) already queued, then the ones chosen here: a second version of one is never taken.
+    let mut chosen = taken;
+    for (_, id, artist, reason, song) in cands {
         if out.len() >= limit {
             break;
         }
+        let key = (artist.clone(), song);
         let n = per_artist.entry(artist).or_insert(0);
-        if *n >= MAX_PER_ARTIST || !seen.insert(id) {
+        if *n >= MAX_PER_ARTIST || chosen.contains(&key) || !seen.insert(id) {
             continue;
         }
         *n += 1;
+        chosen.insert(key);
         out.push(Rec { track_id: id, reason });
     }
 
@@ -259,7 +298,7 @@ pub fn pick(
                 .iter()
                 .filter(|(a, _)| **a != seed_artist)
                 .flat_map(|(a, ts)| ts.iter().map(move |t| (a, t)))
-                .filter(|(_, t)| t.genre_norm.as_deref() == Some(g.as_str()) && !skip(t.id) && !seen.contains(&t.id))
+                .filter(|(a, t)| t.genre_norm.as_deref() == Some(g.as_str()) && !skip(t.id) && !seen.contains(&t.id) && !chosen.contains(&((*a).clone(), t.song.clone())))
                 .collect();
             // Artists the user plays a lot come first, the rest in a stable pseudo-random order.
             same.sort_by_key(|(a, t)| (std::cmp::Reverse((taste.get(*a).copied().unwrap_or(0.0) * 1000.0) as u64), shuffle_key(seed.track_id, t.id)));
@@ -268,7 +307,7 @@ pub fn pick(
                     break;
                 }
                 let n = per_artist.entry(a.clone()).or_insert(0);
-                if *n >= MAX_PER_ARTIST {
+                if *n >= MAX_PER_ARTIST || !chosen.insert((a.clone(), t.song.clone())) {
                     continue;
                 }
                 *n += 1;
@@ -280,10 +319,18 @@ pub fn pick(
     // Local fallback 2: other tracks of the same artist.
     if out.len() < limit {
         if let Some(tracks) = by_artist.get(&seed_artist) {
-            let mut ids: Vec<i64> = tracks.iter().map(|t| t.id).filter(|id| !skip(*id) && !seen.contains(id)).collect();
-            ids.sort_by_key(|id| shuffle_key(seed.track_id, *id));
-            for id in ids.into_iter().take(MAX_SAME_ARTIST.min(limit - out.len())) {
-                out.push(Rec { track_id: id, reason: "same_artist" });
+            let mut ts: Vec<&LibTrack> = tracks.iter().filter(|t| !skip(t.id) && !seen.contains(&t.id)).collect();
+            ts.sort_by_key(|t| shuffle_key(seed.track_id, t.id));
+            let room = MAX_SAME_ARTIST.min(limit - out.len());
+            let mut added = 0;
+            for t in ts {
+                if added >= room {
+                    break;
+                }
+                if chosen.insert((seed_artist.clone(), t.song.clone())) {
+                    out.push(Rec { track_id: t.id, reason: "same_artist" });
+                    added += 1;
+                }
             }
         }
     }
@@ -589,5 +636,52 @@ mod tests {
         t.clear();
         t.insert("queen".into(), 1.0);
         assert!([10, 11, 12, 13].contains(&first(&t)));
+    }
+
+    #[test]
+    fn versions_of_a_song_share_a_key() {
+        let k = song_title("Under Pressure");
+        assert_eq!(song_title("Under Pressure (Live at Wembley)"), k);
+        assert_eq!(song_title("Under Pressure - Remastered 2011"), k);
+        assert_eq!(song_title("Under Pressure - Live"), k);
+        // A dash that is part of the title is kept.
+        assert_ne!(song_title("Jesus Christ - Superstar"), song_title("Jesus Christ"));
+        assert_ne!(song_title("Alive - Pearl"), song_title("Alive"));
+    }
+
+    fn with_versions(c: &Connection) {
+        for (id, title) in [(40, "Under Pressure - Live"), (41, "Under Pressure (Remastered 2011)")] {
+            c.execute(
+                "INSERT INTO tracks(id, path, album_id, title, genre, size, mtime) VALUES(?1, ?2, 2, ?3, 'Rock', 1, 1)",
+                params![id, format!("/p{id}.mp3"), title],
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn a_queued_song_is_not_suggested_in_another_version() {
+        let c = library();
+        with_versions(&c);
+        let ex: HashSet<i64> = [11].into_iter().collect();
+        let sa = vec![SimArtist { name: "Queen".into(), score: 0.8 }];
+        for r in [
+            pick(&c, &seed(), &[], &sa, &Taste::new(), &ex, 20).unwrap(),
+            pick(&c, &seed(), &[], &[], &Taste::new(), &ex, 20).unwrap(),
+        ] {
+            assert!(r.iter().all(|x| ![11, 40, 41].contains(&x.track_id)), "{r:?}");
+        }
+    }
+
+    #[test]
+    fn one_version_of_a_song_per_batch() {
+        let c = library();
+        with_versions(&c);
+        let sa = vec![SimArtist { name: "Queen".into(), score: 0.8 }];
+        let by_artist = pick(&c, &seed(), &[], &sa, &Taste::new(), &HashSet::new(), 20).unwrap();
+        let local = pick(&c, &seed(), &[], &[], &Taste::new(), &HashSet::new(), 20).unwrap();
+        for r in [by_artist, local] {
+            assert!(r.iter().filter(|x| [11, 40, 41].contains(&x.track_id)).count() <= 1, "{r:?}");
+        }
     }
 }
