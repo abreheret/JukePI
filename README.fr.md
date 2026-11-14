@@ -73,6 +73,10 @@ Fonctionne et sert au quotidien sur l'installation de l'auteur (une bibliothèqu
 - Les fonctions Last.fm facultatives (`LASTFM_API_KEY`, `LASTFM_SECRET`) envoient à Last.fm l'artiste et le titre en cours, et avec le scrobbling la liste de ce que joue l'ampli. Elles sont inactives sans clé ; les secrets sont dans l'unité systemd du Pi, jamais dans le dépôt. Voir [OPERATIONS](music-server/docs/OPERATIONS.fr.md#activer-lastfm-vie-privée).
 - Les adresses IP de la documentation (`192.168.1.50`, `192.168.1.60`) sont des exemples. Rien dans le dépôt ne contient d'identifiants.
 
+## Développement
+
+Le code a été développé avec l'aide de [Claude](https://claude.ai) (Anthropic), modèles Sonnet et Opus.
+
 ## Licence et marques
 
 Publié sous [licence MIT](LICENSE). *Denon* et *HEOS* sont des marques de leurs propriétaires ; ce projet est indépendant et n'est ni affilié à eux ni approuvé par eux.

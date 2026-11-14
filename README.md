@@ -73,6 +73,10 @@ Working and used day to day on the author's setup (a 43,794-track library, a Pi 
 - The optional Last.fm features (`LASTFM_API_KEY`, `LASTFM_SECRET`) send the artist and title being played to Last.fm, and with scrobbling the list of what the amplifier plays. They are off without a key; secrets live in the systemd unit of the Pi, never in the repository. See [OPERATIONS](music-server/docs/OPERATIONS.md#enabling-lastfm-privacy).
 - IP addresses in the documentation (`192.168.1.50`, `192.168.1.60`) are examples. Nothing in the repository holds credentials.
 
+## Development
+
+The code was developed with the help of [Claude](https://claude.ai) (Anthropic), models Sonnet and Opus.
+
 ## Licence and trademarks
 
 Released under the [MIT licence](LICENSE). *Denon* and *HEOS* are trademarks of their respective owners; this project is independent and not affiliated with or endorsed by them.

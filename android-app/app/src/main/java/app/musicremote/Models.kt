@@ -66,6 +66,8 @@ data class QueueItem(
     val title: String,
     val artist: String? = null,
     @SerialName("duration_ms") val durationMs: Long? = null,
+    /** Set by the server when it added the track as a suggestion: lastfm_track, lastfm_artist, same_genre, same_artist. */
+    val reason: String? = null,
 )
 
 /** Mirror of the server's GET /player snapshot. `status` is stopped | loading | playing | paused. */
@@ -80,6 +82,8 @@ data class PlayerSnapshot(
     val volume: Int? = null,
     val mute: Boolean = false,
     val queue: List<QueueItem> = emptyList(),
+    /** The server adds suggestions by itself (setting shared by every client). Null: an older server, or the phone's player. */
+    @SerialName("auto_suggest") val autoSuggest: Boolean? = null,
     val error: String? = null,
 )
 

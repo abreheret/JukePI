@@ -101,11 +101,14 @@ How the suggestions are built is described in [docs/ARCHITECTURE.md](docs/ARCHIT
 
 | Request | Effect |
 | --- | --- |
-| `GET /player` | snapshot: `status` (`stopped\|loading\|playing\|paused`), `index`, `current`, `position_ms`, `duration_ms`, `volume`, `mute`, `queue`, `error`, `heos_connected`, `updated_at_ms` |
+| `GET /player` | snapshot: `status` (`stopped\|loading\|playing\|paused`), `index`, `current`, `position_ms`, `duration_ms`, `volume`, `mute`, `queue` (a track the server added as a suggestion has a `reason`), `auto_suggest`, `error`, `heos_connected`, `updated_at_ms` |
 | `GET /player/events` | SSE stream: the full snapshot now, then on every change. The position is only refreshed every ~5 s: clients extrapolate from `updated_at_ms` |
 | `POST /player/play` | body `{"album_id":N}` or `{"track_id":N}` or `{"track_ids":[...],"start":0}`: replaces the queue and starts playing |
 | `POST /player/next`, `/previous`, `/pause`, `/resume`, `/stop` | commands (`202` + snapshot) |
 | `POST /player/jump` | body `{"index":N}` |
+| `POST /player/remove` | body `{"index":N,"track_id":ID}`: takes the track at `index` out of the queue (`400` if the queue changed, i.e. `track_id` is not there any more, or if it is the track being played); it is not suggested again soon |
+| `POST /player/suggest_more` | body `{"limit":10}` (optional, 1 to 30): appends tracks close to the end of the queue, marked with a `reason`; `{"added":N}`, `0` when a batch is already being prepared or nothing fits (`400` if nothing is queued). For an app whose user scrolled to the end of the queue |
+| `POST /player/auto_suggest` | body `{"enabled":true}`: turns the server's automatic suggestions on or off for every client, kept across restarts (file `auto_suggest` next to the index) |
 | `POST /player/enqueue` | body `{"track_ids":[...]}`: appends to the end of the queue without touching the current track (`400` if nothing is queued: use `/player/play`) |
 | `POST /player/volume` | body `{"level":0-100}` |
 | `POST /player/mute` | body `{"mute":true\|false}` (the volume is kept) |

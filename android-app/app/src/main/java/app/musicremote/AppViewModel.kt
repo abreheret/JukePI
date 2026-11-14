@@ -103,12 +103,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     var autoSimilar by mutableStateOf(prefs.getBoolean("auto_similar", true))
         private set
-    fun updateAutoSimilar(on: Boolean) { autoSimilar = on; prefs.edit().putBoolean("auto_similar", on).apply() }
+    /** The server has told us it adds the suggestions itself (its snapshot has `auto_suggest`): it keeps the setting. */
+    private var serverSuggests = false
+    private var toggledAt = 0L
+
+    fun updateAutoSimilar(on: Boolean) {
+        storeAutoSimilar(on)
+        toggledAt = SystemClock.elapsedRealtime()
+        val a = api ?: return
+        if (serverSuggests && PlayerRepository.server.value == Server.Online) {
+            viewModelScope.launch { try { a.setAutoSuggest(on) } catch (e: CancellationException) { throw e } catch (e: Exception) { message = "Réglage non transmis au serveur : ${e.message ?: e.javaClass.simpleName}" } }
+        }
+    }
+
+    private fun storeAutoSimilar(on: Boolean) {
+        autoSimilar = on
+        prefs.edit().putBoolean("auto_similar", on).apply()
+    }
+
+    /** The server's setting is the reference (another phone may have changed it), except just after our own tap. */
+    private fun followServerSetting(s: PlayerSnapshot) {
+        val server = s.autoSuggest ?: return
+        serverSuggests = true
+        if (server != autoSimilar && SystemClock.elapsedRealtime() - toggledAt > 3000) storeAutoSimilar(server)
+    }
 
     /** The tracks the server suggested (id -> why): remembered, so the queue can label them even after a restart. */
     val suggested = mutableStateMapOf<Long, String>()
     private val suggestedOrder = ArrayDeque<Long>()
     private var autoDoneKey: String? = null
+    private var moreKey: String? = null
 
     init {
         for (e in prefs.getString("suggested", "").orEmpty().split(';')) {
@@ -117,7 +141,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             suggested[id] = p.getOrElse(1) { "" }
             suggestedOrder.addLast(id)
         }
-        viewModelScope.launch { player.collect { maybeAutoSuggest(it.snap) } }
+        viewModelScope.launch { player.collect { followServerSetting(it.snap); maybeAutoSuggest(it.snap) } }
     }
 
     private fun rememberSuggested(items: List<Track>) {
@@ -128,6 +152,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun maybeAutoSuggest(s: PlayerSnapshot) {
         val q = s.queue
+        if (s.autoSuggest != null) return // the server adds the batches itself (it also does it with no app open)
         if (!autoSimilar || q.isEmpty()) return
         if (s.status != "playing" && s.status != "loading") return
         val hasSuggestions = q.any { it.trackId in suggested }
@@ -139,6 +164,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (autoDoneKey == key) return // already tried (also when nothing was found: no retry loop)
         autoDoneKey = key
         suggestSimilar(auto = true, seed = q.last().trackId, limit = AUTO_BATCH)
+    }
+
+    /**
+     * The user scrolled to the end of the queue: `AUTO_BATCH` more tracks. The server adds them when it handles the
+     * suggestions (Denon), the phone asks for them itself otherwise.
+     */
+    fun loadMoreSuggestions() {
+        val snap = player.value.snap
+        val last = snap.queue.lastOrNull() ?: return
+        if (!autoSimilar || suggesting || PlayerRepository.server.value != Server.Online) return
+        // One request per queue state: the same end of queue is not asked twice, so an empty answer cannot loop and a
+        // batch whose tracks have not arrived yet is not requested again.
+        val key = "${snap.queue.size}:${last.trackId}"
+        if (moreKey == key) return
+        moreKey = key
+        val a = api ?: return
+        if (!phoneMode && snap.autoSuggest != null) {
+            suggesting = true
+            viewModelScope.launch {
+                try { a.suggestMore(AUTO_BATCH) } catch (e: CancellationException) { throw e } catch (_: Exception) { moreKey = null } finally { suggesting = false }
+            }
+        } else {
+            suggestSimilar(auto = true, seed = last.trackId, limit = AUTO_BATCH)
+        }
     }
 
     /**
@@ -372,6 +421,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun next() { if (phoneMode) phone { it.seekToNextMediaItem() } else act { next() } }
     fun previous() { if (phoneMode) phone { it.seekToPrevious() } else act { previous() } }
     fun stop() { if (phoneMode) phone { it.stop() } else act { stop() } }
+    /** Bumped when a removal failed, so the queue rows are rebuilt (a swiped row would stay hidden otherwise). */
+    var queueRevision by mutableStateOf(0)
+        private set
+
+    /** Take a track out of the queue (swipe). `trackId` is the track the user saw at `index`. */
+    fun removeFromQueue(index: Int, trackId: Long) {
+        if (phoneMode) {
+            phone { if (index < it.mediaItemCount && it.getMediaItemAt(index).mediaId == trackId.toString() && index != it.currentMediaItemIndex) it.removeMediaItem(index) }
+            return
+        }
+        val a = api ?: return
+        viewModelScope.launch {
+            try { a.removeFromQueue(index, trackId) } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                message = "Titre non retiré : ${e.message ?: e.javaClass.simpleName}"
+                queueRevision++
+            }
+        }
+    }
+
     fun jump(index: Int) { if (phoneMode) phone { it.seekTo(index, 0); PhoneControl.resume(it) } else act { jump(index) } }
     fun seekTo(ms: Long) { if (phoneMode) phone { it.seekTo(ms.coerceAtLeast(0)) } else act { seekTo(ms) } }
 

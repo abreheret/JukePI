@@ -472,7 +472,7 @@ fun SettingsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
             Column(Modifier.weight(1f)) {
                 Text("Suggestions à la suite", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Quand tu lances un album, quelques titres proches de ta bibliothèque s'ajoutent à la suite dans la file, repérés par une étoile : passe ceux que tu ne veux pas entendre. D'autres s'ajoutent quand le dernier titre démarre. Le serveur peut interroger Last.fm si une clé y est configurée : il lui envoie alors l'artiste et le titre.",
+                    "Quand tu lances un album, quelques titres proches de ta bibliothèque s'ajoutent à la suite dans la file, repérés par une étoile : passe ceux que tu ne veux pas entendre. D'autres s'ajoutent quand la file arrive à sa fin, et par lots de 10 quand tu fais défiler la file vers le bas. Avec l'ampli, c'est le serveur qui les ajoute : la musique continue même si l'appli est fermée, et le réglage vaut pour tous les téléphones. Le serveur peut interroger Last.fm si une clé y est configurée : il lui envoie alors l'artiste et le titre.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

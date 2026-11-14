@@ -13,6 +13,7 @@ mod recommend;
 mod scan;
 mod scrobble;
 mod search;
+mod suggest;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -50,7 +51,9 @@ async fn main() -> anyhow::Result<()> {
     let heos_player = std::env::var("HEOS_PLAYER_NAME").ok().filter(|h| !h.is_empty());
     let public_url = env_or("MUSIC_PUBLIC_URL", "http://192.168.1.50:8765");
     let heos = heos::HeosClient::spawn(heos_host, heos_player);
-    let player = player::spawn(heos, public_url.trim_end_matches('/').to_string());
+    let data_dir = db_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
+    let suggest_setting = data_dir.join("auto_suggest");
+    let player = player::spawn(heos, public_url.trim_end_matches('/').to_string(), suggest::read_setting(&suggest_setting));
 
     let cache_dir = PathBuf::from(env_or("MUSIC_CACHE_DIR", &format!("{home}/.cache/music-server")));
     let cover_service = covers::CoverService::new(root.clone(), cache_dir.join("covers"));
@@ -83,7 +86,6 @@ async fn main() -> anyhow::Result<()> {
     // Optional, OFF without a key. LASTFM_API_KEY: similarity (sends the artist/title of the track being played).
     // LASTFM_SECRET + an account linked through /lastfm/auth/start: scrobbling (sends what the Denon plays).
     // LASTFM_USER: account whose listening history lifts the suggestions when none is linked.
-    let data_dir = db_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
     let lastfm = Arc::new(lastfm::Client::new(
         std::env::var("LASTFM_API_KEY").ok(),
         std::env::var("LASTFM_SECRET").ok(),
@@ -92,8 +94,11 @@ async fn main() -> anyhow::Result<()> {
     ));
     scrobble::spawn(lastfm.clone(), db_path.clone(), player.watch());
     let recommender = Arc::new(recommend::Recommender::new(lastfm.clone(), db_path.clone()));
+    // The server adds suggestions behind the queue by itself (setting `auto_suggest`, on by default).
+    let suggester = suggest::Suggester::new(recommender.clone(), db_path.clone(), player.clone(), suggest_setting);
+    suggester.clone().spawn();
 
-    let app = api::router(api::AppState { root, db_path, scan: scan_state, player, covers: cover_service, recommend: recommender, lastfm });
+    let app = api::router(api::AppState { root, db_path, scan: scan_state, player, covers: cover_service, recommend: recommender, lastfm, suggest: suggester });
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     info!("listening on {}", listener.local_addr()?);
     axum::serve(listener, app)

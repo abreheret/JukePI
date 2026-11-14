@@ -2,6 +2,17 @@
 
 🇫🇷 Le journal des modifications est en anglais ; la documentation existe en français (`*.fr.md`).
 
+## Unreleased
+
+### Added
+- **Endless queue, kept by the server.** With the amplifier, the server itself appends 10 suggestions when a queue starts and 10 more when the last or last-but-one track plays, so the music goes on even with no app open. Tracks played recently (300) and tracks already queued are never suggested again; a queue that grows to 1000 forgets what was played long ago. Suggested tracks carry a `reason` in the player snapshot, so every phone marks them the same way (new fields `reason` and `auto_suggest`).
+- **Endless scrolling in the app**: scroll the queue down and 10 more suggestions are added each time you get near its end.
+- **Swipe a track of the queue left or right to take it out** (the track being played cannot be removed). A removed suggestion is not proposed again soon. `POST /player/remove`.
+- `POST /player/suggest_more` and `POST /player/auto_suggest`. The "Suggestions à la suite" setting now lives on the server (shared by all phones, kept across restarts).
+
+### Upgrading
+- Update the server and the app together. An app of 0.2.0 with the new server would not know the suggestions the server adds and would add its own batch too.
+
 ## 0.2.0 - 2026-11-13
 
 ### Upgrading

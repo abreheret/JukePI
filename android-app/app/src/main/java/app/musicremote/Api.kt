@@ -155,6 +155,16 @@ class Api(val base: String) {
     suspend fun enqueue(ids: List<Long>) =
         post("/player/enqueue", buildJsonObject { put("track_ids", buildJsonArray { ids.forEach { add(JsonPrimitive(it)) } }) })
 
+    /** Ask the server for `limit` more tracks behind the queue (the user scrolled to its end). */
+    suspend fun suggestMore(limit: Int) = post("/player/suggest_more", buildJsonObject { put("limit", limit) })
+
+    /** Turn the server's automatic suggestions on or off (for every client). */
+    suspend fun setAutoSuggest(on: Boolean) = post("/player/auto_suggest", buildJsonObject { put("enabled", on) })
+
+    /** Take the track at `index` out of the queue; `trackId` lets the server refuse when the queue changed meanwhile. */
+    suspend fun removeFromQueue(index: Int, trackId: Long) =
+        post("/player/remove", buildJsonObject { put("index", index); put("track_id", trackId) })
+
     suspend fun jump(index: Int) = post("/player/jump", buildJsonObject { put("index", index) })
     suspend fun pause() = post("/player/pause")
     suspend fun resume() = post("/player/resume")

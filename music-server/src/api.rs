@@ -23,6 +23,7 @@ pub struct AppState {
     pub covers: std::sync::Arc<covers::CoverService>,
     pub recommend: std::sync::Arc<recommend::Recommender>,
     pub lastfm: std::sync::Arc<lastfm::Client>,
+    pub suggest: std::sync::Arc<crate::suggest::Suggester>,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -50,6 +51,9 @@ pub fn router(state: AppState) -> Router {
         .route("/player/play", post(player_play))
         .route("/player/jump", post(player_jump))
         .route("/player/enqueue", post(player_enqueue))
+        .route("/player/suggest_more", post(player_suggest_more))
+        .route("/player/remove", post(player_remove))
+        .route("/player/auto_suggest", post(player_auto_suggest))
         .route("/player/next", post(player_next))
         .route("/player/previous", post(player_prev))
         .route("/player/pause", post(player_pause))
@@ -279,36 +283,20 @@ async fn recommendations(State(st): State<AppState>, Query(q): Query<RecQuery>) 
     let limit = q.limit.unwrap_or(20).clamp(1, 100);
     let exclude: std::collections::HashSet<i64> =
         q.exclude.as_deref().unwrap_or("").split(',').filter_map(|s| s.trim().parse().ok()).collect();
-    let id = q.track_id;
-    let seed = with_db(&st, move |c| {
-        c.query_row(
-            "SELECT t.id, COALESCE(t.artist, a.artist), t.title FROM tracks t JOIN albums a ON a.id = t.album_id WHERE t.id=?1",
-            params![id],
-            |r| Ok(recommend::Seed { track_id: r.get(0)?, artist: r.get(1)?, title: r.get(2)? }),
-        )
-        .map_err(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => ApiError::NotFound,
-            e => e.into(),
-        })
-    })
-    .await?;
-    let (sim_tracks, sim_artists, taste) = st.recommend.similar(&seed).await;
-    let lastfm = st.recommend.enabled();
+    let out = st.recommend.recommend(q.track_id, limit, exclude).await?.ok_or(ApiError::NotFound)?;
     with_db(&st, move |c| {
-        let recs = recommend::pick(c, &seed, &sim_tracks, &sim_artists, &taste, &exclude, limit)?;
         let mut sel = c.prepare(&format!("{TRACK_SELECT} WHERE t.id=?1"))?;
-        let mut items = Vec::with_capacity(recs.len());
-        for r in &recs {
+        let mut items = Vec::with_capacity(out.recs.len());
+        for r in &out.recs {
             let mut j = sel.query_row(params![r.track_id], track_json)?;
             j["reason"] = json!(r.reason);
             items.push(j);
         }
-        let from_lastfm = recs.iter().any(|r| r.reason.starts_with("lastfm"));
         Ok(Json(json!({
-            "seed_track_id": seed.track_id,
-            "lastfm_enabled": lastfm,
-            "taste": !taste.is_empty(),
-            "source": if from_lastfm { "lastfm" } else { "local" },
+            "seed_track_id": out.seed_track_id,
+            "lastfm_enabled": out.lastfm_enabled,
+            "taste": out.taste,
+            "source": if out.from_lastfm { "lastfm" } else { "local" },
             "items": items,
         })))
     })
@@ -450,7 +438,7 @@ struct PlayBody {
 
 const MAX_QUEUE: usize = 1000;
 
-fn load_items(c: &Connection, ids: &[i64]) -> ApiResult<Vec<QueueItem>> {
+pub fn load_items(c: &Connection, ids: &[i64]) -> ApiResult<Vec<QueueItem>> {
     let mut st = c.prepare(&format!("{TRACK_SELECT} WHERE t.id=?1"))?;
     let mut items = Vec::with_capacity(ids.len());
     for id in ids {
@@ -462,6 +450,7 @@ fn load_items(c: &Connection, ids: &[i64]) -> ApiResult<Vec<QueueItem>> {
                 artist: r.get("artist")?,
                 duration_ms: r.get("duration_ms")?,
                 duration_exact: r.get::<_, i64>("duration_exact")? == 1,
+                reason: None,
             })
         }) {
             Ok(i) => items.push(i),
@@ -540,6 +529,55 @@ async fn player_enqueue(State(st): State<AppState>, Json(b): Json<EnqueueBody>) 
     let ids = b.track_ids;
     let items = with_db(&st, move |c| load_items(c, &ids)).await?;
     player_cmd(&st, Cmd::Enqueue(items)).await
+}
+
+#[derive(Deserialize, Default)]
+struct SuggestMoreBody {
+    limit: Option<usize>,
+}
+
+/// Append a batch of tracks close to the end of the queue ("more like the last one"), marked as suggestions. Used by an
+/// app whose user scrolled to the end of the queue. `added` is 0 when a batch is already being prepared or nothing fits.
+async fn player_suggest_more(State(st): State<AppState>, body: Option<Json<SuggestMoreBody>>) -> ApiResult<Json<Json_>> {
+    if st.player.snapshot().queue.is_empty() {
+        return Err(ApiError::BadRequest("the queue is empty: use /player/play".into()));
+    }
+    let limit = body.and_then(|Json(b)| b.limit).unwrap_or(crate::suggest::BATCH).clamp(1, 30);
+    let added = st.suggest.extend(limit).await?;
+    Ok(Json(json!({ "added": added })))
+}
+
+#[derive(Deserialize)]
+struct RemoveBody {
+    index: usize,
+    /// The track the client believes is at `index`: refused if the queue changed in the meantime.
+    track_id: i64,
+}
+
+/// Take a track out of the queue (swipe in the app). The track being played cannot be removed. The track is not
+/// suggested again soon.
+async fn player_remove(State(st): State<AppState>, Json(b): Json<RemoveBody>) -> ApiResult<(StatusCode, Json<player::Snapshot>)> {
+    let snap = st.player.snapshot();
+    match snap.queue.get(b.index) {
+        Some(q) if q.track_id == b.track_id => {}
+        _ => return Err(ApiError::BadRequest("the queue changed: reload it".into())),
+    }
+    if snap.index == Some(b.index) {
+        return Err(ApiError::BadRequest("the track being played cannot be removed".into()));
+    }
+    st.suggest.avoid(b.track_id);
+    player_cmd(&st, Cmd::Remove { index: b.index, track_id: b.track_id }).await
+}
+
+#[derive(Deserialize)]
+struct AutoSuggestBody {
+    enabled: bool,
+}
+
+/// Turn the server's automatic suggestions on or off (for every client, kept across restarts).
+async fn player_auto_suggest(State(st): State<AppState>, Json(b): Json<AutoSuggestBody>) -> ApiResult<Json<Json_>> {
+    st.suggest.set_enabled(b.enabled).await?;
+    Ok(Json(json!({ "auto_suggest": b.enabled })))
 }
 
 async fn player_jump(State(st): State<AppState>, Json(b): Json<JumpBody>) -> ApiResult<(StatusCode, Json<player::Snapshot>)> {

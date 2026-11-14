@@ -1,10 +1,12 @@
 package app.musicremote
 
 import android.os.SystemClock
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -16,6 +18,7 @@ import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Remove
@@ -33,6 +36,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 
 /**
  * Playback position, extrapolated locally. The Denon only reports it every ~5 s, so between events we add the time
@@ -91,6 +96,7 @@ fun MiniPlayer(vm: AppViewModel, modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     val ui by vm.player.collectAsState()
@@ -99,7 +105,19 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     val playing = s.status == "playing"
     val pos = rememberPositionMs(ui)
 
-    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+    // Endless queue: when the user scrolls close to its end, 10 more suggestions are added (the key is the queue size, so
+    // a new batch is asked only once the previous one has arrived, and an empty answer does not loop).
+    val listState = rememberLazyListState()
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            val scrolled = listState.firstVisibleItemIndex > 0 || listState.isScrollInProgress
+            if (scrolled && info.totalItemsCount > 2 && last >= info.totalItemsCount - 3) info.totalItemsCount else -1
+        }.distinctUntilChanged().filter { it > 0 }.collect { vm.loadMoreSuggestions() }
+    }
+
+    LazyColumn(modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 if (cur != null) Cover(vm.api, cur.albumId, vm.hasCover(cur.albumId), 600, Modifier.fillMaxWidth(0.85f))
@@ -207,14 +225,29 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
         if (s.queue.size > 1) {
             item { Text("File d'attente", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 20.dp, bottom = 4.dp)) }
             // The tracks the server suggested are marked (a star, why) and start under a "Suggestions" heading.
-            val firstSuggested = s.queue.indexOfFirst { it.trackId in vm.suggested }
-            itemsIndexed(s.queue, key = { i, q -> "$i-${q.trackId}" }) { i, q ->
+            val firstSuggested = s.queue.indexOfFirst { it.reason != null || it.trackId in vm.suggested }
+            itemsIndexed(s.queue, key = { i, q -> "$i-${q.trackId}-${vm.queueRevision}" }) { i, q ->
                 val current = i == s.index
-                val why = vm.suggested[q.trackId]
+                val why = q.reason ?: vm.suggested[q.trackId]
                 Column {
                     if (i == firstSuggested) {
                         Text("Suggestions", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 2.dp))
                     }
+                    // Swipe a track left or right to take it out of the queue (not the one being played).
+                    val dismiss = rememberSwipeToDismissBoxState(confirmValueChange = { v ->
+                        if (v != SwipeToDismissBoxValue.Settled) { vm.removeFromQueue(i, q.trackId); true } else false
+                    })
+                    SwipeToDismissBox(
+                        state = dismiss,
+                        enableDismissFromStartToEnd = !current,
+                        enableDismissFromEndToStart = !current,
+                        backgroundContent = {
+                            Box(
+                                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer).padding(horizontal = 20.dp),
+                                contentAlignment = if (dismiss.dismissDirection == SwipeToDismissBoxValue.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd,
+                            ) { Icon(Icons.Default.Delete, "Retirer de la file", tint = MaterialTheme.colorScheme.onErrorContainer) }
+                        },
+                    ) {
                     ListItem(
                         modifier = Modifier.clickable { vm.jump(i) },
                         leadingContent = {
@@ -231,6 +264,16 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                         },
                         trailingContent = { Text(formatMs(q.durationMs), color = MaterialTheme.colorScheme.onSurfaceVariant) },
                     )
+                    }
+                }
+            }
+            if (vm.suggesting) {
+                item {
+                    Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Recherche de suggestions…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }

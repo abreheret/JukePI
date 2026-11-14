@@ -101,11 +101,14 @@ La construction des suggestions est décrite dans [docs/ARCHITECTURE.md](docs/AR
 
 | Requête | Effet |
 | --- | --- |
-| `GET /player` | instantané : `status` (`stopped\|loading\|playing\|paused`), `index`, `current`, `position_ms`, `duration_ms`, `volume`, `mute`, `queue`, `error`, `heos_connected`, `updated_at_ms` |
+| `GET /player` | instantané : `status` (`stopped\|loading\|playing\|paused`), `index`, `current`, `position_ms`, `duration_ms`, `volume`, `mute`, `queue` (un titre ajouté par le serveur comme suggestion a un `reason`), `auto_suggest`, `error`, `heos_connected`, `updated_at_ms` |
 | `GET /player/events` | flux SSE : l'instantané complet maintenant, puis à chaque changement. La position n'est rafraîchie que toutes les ~5 s : le client extrapole depuis `updated_at_ms` |
 | `POST /player/play` | corps `{"album_id":N}` ou `{"track_id":N}` ou `{"track_ids":[...],"start":0}` : remplace la file et lance la lecture |
 | `POST /player/next`, `/previous`, `/pause`, `/resume`, `/stop` | commandes (réponse `202` + instantané) |
 | `POST /player/jump` | corps `{"index":N}` |
+| `POST /player/remove` | corps `{"index":N,"track_id":ID}` : retire de la file le titre à la position `index` (`400` si la file a changé, c'est-à-dire que `track_id` n'y est plus, ou si c'est le titre en cours) ; il n'est plus suggéré avant un moment |
+| `POST /player/suggest_more` | corps `{"limit":10}` (facultatif, 1 à 30) : ajoute à la fin de la file des titres proches du dernier, marqués d'un `reason` ; `{"added":N}`, `0` si un lot est déjà en préparation ou si rien ne convient (`400` si la file est vide). Pour une appli dont l'utilisateur a fait défiler la file jusqu'au bout |
+| `POST /player/auto_suggest` | corps `{"enabled":true}` : active ou coupe les suggestions automatiques du serveur pour tous les clients, conservé après un redémarrage (fichier `auto_suggest` à côté de l'index) |
 | `POST /player/enqueue` | corps `{"track_ids":[...]}` : ajoute à la fin de la file sans toucher au titre en cours (`400` si la file est vide : utiliser `/player/play`) |
 | `POST /player/volume` | corps `{"level":0-100}` |
 | `POST /player/mute` | corps `{"mute":true\|false}` (le volume est conservé) |

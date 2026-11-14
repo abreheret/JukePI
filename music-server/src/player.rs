@@ -22,6 +22,8 @@ const TRANSITION_TIMEOUT: Duration = Duration::from_secs(12);
 const ERROR_DEDUPE: Duration = Duration::from_secs(3);
 const MAX_ERRORS_IN_ROW: u32 = 3;
 const PREV_RESTART_AFTER_MS: u64 = 3000;
+/// Tracks already played that stay in a queue being trimmed.
+const KEEP_PLAYED: usize = 50;
 
 #[derive(Clone, Serialize, Debug)]
 pub struct QueueItem {
@@ -34,6 +36,10 @@ pub struct QueueItem {
     /// the Denon can only estimate, and this value is the one to trust.
     #[serde(default)]
     pub duration_exact: bool,
+    /// Set when the server added the track by itself as a suggestion: `lastfm_track`, `lastfm_artist`, `same_genre`
+    /// or `same_artist`. Absent for what the user chose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Clone, Copy, Serialize, Debug, PartialEq, Eq)]
@@ -57,6 +63,8 @@ pub struct Snapshot {
     pub volume: Option<u8>,
     pub mute: bool,
     pub queue: Vec<QueueItem>,
+    /// The server appends suggestions behind the queue by itself (setting shared by every client).
+    pub auto_suggest: bool,
     pub error: Option<String>,
     pub updated_at_ms: u64,
 }
@@ -65,6 +73,21 @@ pub struct Snapshot {
 pub fn without_queued(queue: &[QueueItem], items: Vec<QueueItem>) -> Vec<QueueItem> {
     let mut seen: std::collections::HashSet<i64> = queue.iter().map(|q| q.track_id).collect();
     items.into_iter().filter(|i| seen.insert(i.track_id)).collect()
+}
+
+/// Remove `queue[index]` if it is `track_id` and not the track being played (`current`). Returns the new index of the
+/// current track, which shifts down when the removed track was before it.
+pub fn remove_from_queue(queue: &mut Vec<QueueItem>, current: Option<usize>, index: usize, track_id: i64) -> Result<Option<usize>, &'static str> {
+    match queue.get(index) {
+        None => return Err("index out of range"),
+        Some(q) if q.track_id != track_id => return Err("the queue changed: reload it"),
+        _ => {}
+    }
+    if current == Some(index) {
+        return Err("the track being played cannot be removed");
+    }
+    queue.remove(index);
+    Ok(current.map(|c| if index < c { c - 1 } else { c }))
 }
 
 /// Same bound as the API's `/player/play`.
@@ -82,6 +105,11 @@ pub enum Cmd {
     Stop,
     Volume(u8),
     Mute(bool),
+    /// Turn the automatic suggestions on or off.
+    AutoSuggest(bool),
+    /// Take the track at `index` out of the queue. `track_id` guards against a client whose view of the queue is
+    /// outdated. The track being played cannot be removed.
+    Remove { index: usize, track_id: i64 },
     /// Absolute position in the current track.
     Seek(u64),
     /// Relative move (negative = backwards) from the current position.
@@ -136,10 +164,11 @@ struct Actor {
     errors_in_row: u32,
     last_error_at: Option<Instant>,
     pid: Option<i64>,
+    auto_suggest: bool,
     snap_tx: watch::Sender<Snapshot>,
 }
 
-pub fn spawn(heos: HeosClient, base_url: String) -> PlayerHandle {
+pub fn spawn(heos: HeosClient, base_url: String, auto_suggest: bool) -> PlayerHandle {
     let (tx, rx) = mpsc::channel(32);
     let mut actor = Actor {
         heos,
@@ -158,6 +187,7 @@ pub fn spawn(heos: HeosClient, base_url: String) -> PlayerHandle {
         errors_in_row: 0,
         last_error_at: None,
         pid: None,
+        auto_suggest,
         snap_tx: watch::channel(empty_snapshot()).0,
     };
     let (snap_tx, snap_rx) = watch::channel(actor.snapshot());
@@ -177,6 +207,7 @@ fn empty_snapshot() -> Snapshot {
         volume: None,
         mute: false,
         queue: vec![],
+        auto_suggest: true,
         error: None,
         updated_at_ms: now_ms(),
     }
@@ -199,6 +230,7 @@ impl Actor {
             volume: self.volume,
             mute: self.mute,
             queue: self.queue.clone(),
+            auto_suggest: self.auto_suggest,
             error: self.error.clone(),
             updated_at_ms: now_ms(),
         }
@@ -235,6 +267,16 @@ impl Actor {
         }
     }
 
+    /// Drop the tracks played long ago, keeping `KEEP_PLAYED` before the current one. Indexes shift, `index` follows.
+    fn trim_played(&mut self) {
+        let Some(i) = self.index else { return };
+        let drop = i.saturating_sub(KEEP_PLAYED);
+        if drop > 0 {
+            self.queue.drain(..drop);
+            self.index = Some(i - drop);
+        }
+    }
+
     fn fail(&mut self, msg: String) {
         warn!("player: {msg}");
         self.status = Status::Stopped;
@@ -261,6 +303,10 @@ impl Actor {
                 // A track already in the queue is not added again (two clients asking for suggestions at once gave the
                 // same ten tracks twice).
                 let items = without_queued(&self.queue, items);
+                // A queue that never ends (suggestions) must not fill up: forget the tracks played long ago.
+                if self.queue.len() + items.len() > MAX_QUEUE {
+                    self.trim_played();
+                }
                 if self.queue.len() + items.len() <= MAX_QUEUE {
                     self.queue.extend(items);
                 } else {
@@ -302,6 +348,11 @@ impl Actor {
             Cmd::Volume(level) => match self.heos.set_volume(level).await {
                 Ok(()) => self.volume = Some(level.min(100)),
                 Err(e) => self.error = Some(format!("{e:#}")),
+            },
+            Cmd::AutoSuggest(on) => self.auto_suggest = on,
+            Cmd::Remove { index, track_id } => match remove_from_queue(&mut self.queue, self.index, index, track_id) {
+                Ok(new_index) => self.index = new_index,
+                Err(e) => self.error = Some(e.into()),
             },
             Cmd::Mute(on) => match self.heos.set_mute(on).await {
                 Ok(()) => self.mute = on,
@@ -488,11 +539,28 @@ mod tests {
 
     #[test]
     fn enqueue_skips_what_is_already_queued() {
-        let item = |id: i64| QueueItem { track_id: id, album_id: 1, title: id.to_string(), artist: None, duration_ms: None, duration_exact: false };
+        let item = |id: i64| QueueItem { track_id: id, album_id: 1, title: id.to_string(), artist: None, duration_ms: None, duration_exact: false, reason: None };
         let queue = vec![item(1), item(2)];
         let added = without_queued(&queue, vec![item(2), item(3), item(3), item(4)]);
         assert_eq!(added.iter().map(|i| i.track_id).collect::<Vec<_>>(), vec![3, 4], "2 is queued, 3 asked twice");
         assert!(without_queued(&queue, vec![item(1), item(2)]).is_empty());
+    }
+
+    #[test]
+    fn removing_a_track_keeps_the_current_one() {
+        let item = |id: i64| QueueItem { track_id: id, album_id: 1, title: id.to_string(), artist: None, duration_ms: None, duration_exact: false, reason: None };
+        let mut q = vec![item(1), item(2), item(3), item(4)];
+        // Playing index 2 (track 3): removing track 4 leaves the index alone, removing track 1 shifts it down.
+        assert_eq!(remove_from_queue(&mut q, Some(2), 3, 4), Ok(Some(2)));
+        assert_eq!(remove_from_queue(&mut q, Some(2), 0, 1), Ok(Some(1)));
+        assert_eq!(q.iter().map(|i| i.track_id).collect::<Vec<_>>(), vec![2, 3]);
+        // The playing track, a stale view of the queue and a bad index are refused and change nothing.
+        assert!(remove_from_queue(&mut q, Some(1), 1, 3).is_err());
+        assert!(remove_from_queue(&mut q, Some(1), 0, 99).is_err());
+        assert!(remove_from_queue(&mut q, Some(1), 7, 2).is_err());
+        assert_eq!(q.len(), 2);
+        // Nothing playing: any track can go.
+        assert_eq!(remove_from_queue(&mut q, None, 0, 2), Ok(None));
     }
 
     #[test]

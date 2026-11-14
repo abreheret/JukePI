@@ -307,9 +307,56 @@ fn cache_put(conn: &Connection, key: &str, payload: &str) {
     );
 }
 
+/// What `Recommender::recommend` found for a seed track.
+pub struct Outcome {
+    pub seed_track_id: i64,
+    pub lastfm_enabled: bool,
+    /// The listening history of a Last.fm account lifted the list.
+    pub taste: bool,
+    pub from_lastfm: bool,
+    pub recs: Vec<Rec>,
+}
+
 impl Recommender {
     pub fn new(client: Arc<Client>, db_path: PathBuf) -> Self {
         Self { client, db_path }
+    }
+
+    /// Whole "more like this" lookup, shared by `GET /recommendations` and the server's own queue extension.
+    /// `None`: the seed track is not in the index. Never fails because of Last.fm.
+    pub async fn recommend(&self, track_id: i64, limit: usize, exclude: HashSet<i64>) -> Result<Option<Outcome>> {
+        let p = self.db_path.clone();
+        let seed = tokio::task::spawn_blocking(move || -> Result<Option<Seed>> {
+            let c = db::connect(&p)?;
+            let r = c.query_row(
+                "SELECT t.id, COALESCE(t.artist, a.artist), t.title FROM tracks t JOIN albums a ON a.id = t.album_id WHERE t.id=?1",
+                params![track_id],
+                |r| Ok(Seed { track_id: r.get(0)?, artist: r.get(1)?, title: r.get(2)? }),
+            );
+            match r {
+                Ok(s) => Ok(Some(s)),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                Err(e) => Err(e.into()),
+            }
+        })
+        .await??;
+        let Some(seed) = seed else { return Ok(None) };
+        let (sim_tracks, sim_artists, taste) = self.similar(&seed).await;
+        let lastfm_enabled = self.enabled();
+        let p = self.db_path.clone();
+        let out = tokio::task::spawn_blocking(move || -> Result<Outcome> {
+            let c = db::connect(&p)?;
+            let recs = pick(&c, &seed, &sim_tracks, &sim_artists, &taste, &exclude, limit)?;
+            Ok(Outcome {
+                seed_track_id: seed.track_id,
+                lastfm_enabled,
+                taste: !taste.is_empty(),
+                from_lastfm: recs.iter().any(|r| r.reason.starts_with("lastfm")),
+                recs,
+            })
+        })
+        .await??;
+        Ok(Some(out))
     }
 
     pub fn enabled(&self) -> bool {
