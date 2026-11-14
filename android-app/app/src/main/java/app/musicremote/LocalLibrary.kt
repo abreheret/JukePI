@@ -6,6 +6,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -13,6 +14,14 @@ import java.io.File
 /** An album on the phone. `complete` = every track is there; an interrupted download resumes where it stopped. */
 data class DownloadedAlbum(val detail: AlbumDetail, val complete: Boolean, val bytes: Long, val tracksOnPhone: Int) {
     val id: Long get() = detail.album.id
+}
+
+/** A list of tracks saved on the phone (the queue at the moment the user asked), with its own copy of the files. */
+@Serializable
+data class Playlist(val id: Long, val name: String, val tracks: List<Track>)
+
+data class DownloadedPlaylist(val playlist: Playlist, val complete: Boolean, val bytes: Long, val tracksOnPhone: Int) {
+    val id: Long get() = playlist.id
 }
 
 data class DownloadProgress(val done: Int, val total: Int, val queued: Boolean = false, val error: String? = null)
@@ -24,6 +33,10 @@ data class DownloadProgress(val done: Int, val total: Int, val queued: Boolean =
  * Layout: `music/album_<id>/` with `album.json` (the album and its tracks, as the server sent them), `cover.jpg`
  * (600 px), `t<trackId>.mp3`, and a `.complete` marker written only once every track is there. Files are written as
  * `*.part` and renamed, so a file with its final name is always whole.
+ *
+ * Playlists live next to the albums, in `music/playlist_<id>/`: `playlist.json`, `t<trackId>.mp3`, `cover_<albumId>.jpg`
+ * and the same `.complete` marker. A playlist has its own copy of every file (a track already on the phone is copied,
+ * not downloaded again), so deleting an album never breaks a playlist.
  */
 object LocalLibrary {
     private val json = Json { ignoreUnknownKeys = true }
@@ -31,8 +44,12 @@ object LocalLibrary {
 
     val albums = MutableStateFlow<List<DownloadedAlbum>>(emptyList())
     val progress = MutableStateFlow<Map<Long, DownloadProgress>>(emptyMap())
+    val playlists = MutableStateFlow<List<DownloadedPlaylist>>(emptyList())
+    val playlistProgress = MutableStateFlow<Map<Long, DownloadProgress>>(emptyMap())
 
     @Volatile private var trackFiles: Map<Long, File> = emptyMap()
+    /** Covers kept inside playlist folders (album id -> file), for albums that are not downloaded themselves. */
+    @Volatile private var playlistCovers: Map<Long, File> = emptyMap()
 
     fun init(ctx: Context) {
         if (root != null) return
@@ -43,7 +60,8 @@ object LocalLibrary {
     private fun albumDir(id: Long) = File(root!!, "album_$id")
 
     fun trackFile(trackId: Long): File? = trackFiles[trackId]
-    fun coverFile(albumId: Long): File? = root?.let { File(albumDir(albumId), "cover.jpg").takeIf { f -> f.exists() } }
+    fun coverFile(albumId: Long): File? =
+        root?.let { File(albumDir(albumId), "cover.jpg").takeIf { f -> f.exists() } } ?: playlistCovers[albumId]
     fun isComplete(albumId: Long): Boolean = albums.value.any { it.id == albumId && it.complete }
     fun detail(albumId: Long): AlbumDetail? = albums.value.firstOrNull { it.id == albumId }?.detail
 
@@ -62,8 +80,104 @@ object LocalLibrary {
             }
             DownloadedAlbum(detail, File(dir, ".complete").exists() && present == detail.tracks.size, bytes, present)
         }.sortedBy { it.detail.album.name.lowercase() }
+        // Playlists: their files count too (an album's copy of a track wins when both exist).
+        val covers = HashMap<Long, File>()
+        val lists = root?.listFiles { f -> f.isDirectory && f.name.startsWith("playlist_") }.orEmpty().mapNotNull { dir ->
+            val pl = runCatching { json.decodeFromString<Playlist>(File(dir, "playlist.json").readText()) }.getOrNull()
+                ?: return@mapNotNull null
+            var bytes = 0L
+            var present = 0
+            for (t in pl.tracks) {
+                val f = File(dir, "t${t.id}.mp3")
+                if (f.exists()) { files.putIfAbsent(t.id, f); bytes += f.length(); present++ }
+            }
+            dir.listFiles { f -> f.name.startsWith("cover_") && f.name.endsWith(".jpg") }?.forEach { c ->
+                c.name.removePrefix("cover_").removeSuffix(".jpg").toLongOrNull()?.let { covers[it] = c }
+            }
+            DownloadedPlaylist(pl, File(dir, ".complete").exists() && present == pl.tracks.size, bytes, present)
+        }.sortedByDescending { it.id } // newest first
         trackFiles = files
+        playlistCovers = covers
         albums.value = list
+        playlists.value = lists
+    }
+
+    private fun playlistDir(id: Long) = File(root!!, "playlist_$id")
+    fun playlist(id: Long): DownloadedPlaylist? = playlists.value.firstOrNull { it.id == id }
+
+    /** Save the list (written first, so it shows up at once); the files come with `downloadPlaylist`. */
+    fun createPlaylist(name: String, tracks: List<Track>): Long {
+        val id = System.currentTimeMillis()
+        val dir = playlistDir(id).apply { mkdirs() }
+        File(dir, "playlist.json").writeText(json.encodeToString(Playlist(id, name, tracks.distinctBy { it.id })))
+        rescan()
+        return id
+    }
+
+    fun renamePlaylist(id: Long, name: String) {
+        val pl = playlist(id)?.playlist ?: return
+        File(playlistDir(id), "playlist.json").writeText(json.encodeToString(pl.copy(name = name)))
+        rescan()
+    }
+
+    fun deletePlaylist(id: Long) {
+        root ?: return
+        playlistDir(id).deleteRecursively()
+        playlistProgress.update { it - id }
+        rescan()
+    }
+
+    fun markPlaylistQueued(id: Long, total: Int = 0) = playlistProgress.update { it + (id to DownloadProgress(0, total, queued = true)) }
+    fun clearPlaylistProgress(id: Long) = playlistProgress.update { it - id }
+    fun markPlaylistFailed(id: Long, message: String) =
+        playlistProgress.update { it + (id to (it[id] ?: DownloadProgress(0, 0)).copy(queued = false, error = message)) }
+
+    /**
+     * Download (or finish downloading) a playlist: the covers of its albums, then each track. A track that is already
+     * on the phone (in an album) is copied; the others come from the server. Cancellable and resumable like an album.
+     */
+    suspend fun downloadPlaylist(api: Api, id: Long) = withContext(Dispatchers.IO) {
+        val dir = playlistDir(id)
+        val pl = json.decodeFromString<Playlist>(File(dir, "playlist.json").readText())
+        File(dir, ".complete").delete()
+        val total = pl.tracks.size
+        playlistProgress.update { it + (id to DownloadProgress(0, total)) }
+
+        // Covers: never asked for an album that has none (has_cover from the album), copied when already on the phone.
+        for (albumId in pl.tracks.map { it.albumId }.filter { it > 0 }.distinct()) {
+            ensureActive()
+            val target = File(dir, "cover_$albumId.jpg")
+            if (target.exists()) continue
+            val own = File(albumDir(albumId), "cover.jpg")
+            if (own.exists()) { runCatching { own.copyTo(target, overwrite = true) }; continue }
+            runCatching {
+                if (api.album(albumId).album.hasCover) {
+                    val part = File(dir, "cover_$albumId.jpg.part")
+                    api.downloadTo("/cover/$albumId?size=600", part)
+                    part.renameTo(target)
+                }
+            } // a missing cover must not fail the playlist
+        }
+        ensureActive()
+
+        var done = pl.tracks.count { File(dir, "t${it.id}.mp3").exists() }
+        playlistProgress.update { it + (id to DownloadProgress(done, total)) }
+        rescan()
+        for (t in pl.tracks) {
+            ensureActive()
+            val f = File(dir, "t${t.id}.mp3")
+            if (f.exists()) continue
+            val part = File(dir, "t${t.id}.mp3.part")
+            val onPhone = trackFile(t.id)?.takeIf { it.exists() && it.parentFile != dir }
+            if (onPhone != null) onPhone.copyTo(part, overwrite = true) else api.downloadTo("/stream/${t.id}.mp3", part)
+            part.renameTo(f)
+            done++
+            playlistProgress.update { it + (id to DownloadProgress(done, total)) }
+            rescan()
+        }
+        File(dir, ".complete").writeText("1")
+        playlistProgress.update { it - id }
+        rescan()
     }
 
     fun delete(albumId: Long) {
@@ -78,7 +192,7 @@ object LocalLibrary {
     fun markFailed(albumId: Long, message: String) =
         progress.update { it + (albumId to (it[albumId] ?: DownloadProgress(0, 0)).copy(queued = false, error = message)) }
 
-    fun totalBytes(): Long = albums.value.sumOf { it.bytes }
+    fun totalBytes(): Long = albums.value.sumOf { it.bytes } + playlists.value.sumOf { it.bytes }
 
     /** Download (or finish downloading) one album. Cancellable; safe to call again after an interruption. */
     suspend fun download(api: Api, albumId: Long) = withContext(Dispatchers.IO) {

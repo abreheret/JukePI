@@ -156,7 +156,8 @@ private fun Root(vm: AppViewModel) {
                 is Detail.ArtistPage -> TopBar(detail.name, onBack = vm::pop, actions = volumeAction)
                 Detail.NowPlaying -> TopBar("Lecture en cours", onBack = vm::pop, actions = volumeAction)
                 Detail.Settings -> TopBar("Serveur", onBack = vm::pop)
-                Detail.Downloads -> TopBar("Albums téléchargés", onBack = vm::pop)
+                Detail.Downloads -> TopBar("Téléchargements", onBack = vm::pop)
+                is Detail.PlaylistPage -> TopBar(detail.title, onBack = vm::pop, actions = volumeAction)
             }
         },
         bottomBar = {
@@ -189,6 +190,7 @@ private fun Root(vm: AppViewModel) {
                     Detail.NowPlaying -> NowPlayingScreen(vm, m)
                     Detail.Settings -> SettingsScreen(vm, m)
                     Detail.Downloads -> DownloadsScreen(vm, m)
+                    is Detail.PlaylistPage -> PlaylistScreen(vm, detail.id, m)
                 }
             }
         }

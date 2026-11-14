@@ -45,7 +45,8 @@ fun Cover(api: Api?, albumId: Long, hasCover: Boolean, size: Int, modifier: Modi
     ) {
         // A downloaded album shows its cover from the phone (works away from home, no network).
         val downloaded by LocalLibrary.albums.collectAsState()
-        val local = remember(albumId, downloaded) { LocalLibrary.coverFile(albumId) }
+        val inPlaylists by LocalLibrary.playlists.collectAsState()
+        val local = remember(albumId, downloaded, inPlaylists) { LocalLibrary.coverFile(albumId) }
         if (local != null) {
             AsyncImage(
                 model = local,

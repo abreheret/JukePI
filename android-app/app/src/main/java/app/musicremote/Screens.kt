@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -162,8 +163,10 @@ fun LocalAlbumsGrid(vm: AppViewModel, artist: String?, modifier: Modifier = Modi
 fun DownloadedScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     val library by LocalLibrary.albums.collectAsState()
     val progress by LocalLibrary.progress.collectAsState()
+    val playlists by LocalLibrary.playlists.collectAsState()
+    val playlistProgress by LocalLibrary.playlistProgress.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
-    val free = remember(library) { (context.getExternalFilesDir(null) ?: context.filesDir).usableSpace }
+    val free = remember(library, playlists) { (context.getExternalFilesDir(null) ?: context.filesDir).usableSpace }
     // In progress first, then incomplete, then complete; each group by name.
     val sorted = remember(library, progress) {
         library.sortedWith(compareBy({ progress[it.id] == null }, { it.complete }, { it.detail.album.name.lowercase() }))
@@ -171,15 +174,15 @@ fun DownloadedScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "${library.size} album(s) · ${megabytes(LocalLibrary.totalBytes())} · ${"%.1f".format(free / 1_073_741_824.0)} Go libres",
+                "${library.size} album(s) · ${playlists.size} playlist(s) · ${megabytes(LocalLibrary.totalBytes())} · ${"%.1f".format(free / 1_073_741_824.0)} Go libres",
                 style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
             )
             TextButton(onClick = { vm.push(Detail.Downloads) }) { Text("Gérer") }
         }
-        if (sorted.isEmpty()) {
+        if (sorted.isEmpty() && playlists.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                 Text(
-                    "Rien sur le téléphone pour l'instant. Ouvre un album et appuie sur « Télécharger » : il restera disponible sans le serveur, et jouera sur le téléphone.",
+                    "Rien sur le téléphone pour l'instant. Ouvre un album et appuie sur « Télécharger », ou télécharge la file d'attente depuis le lecteur : ce sera disponible sans le serveur, et jouera sur le téléphone.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -191,6 +194,33 @@ fun DownloadedScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
+                if (playlists.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text("Playlists", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                    }
+                    items(playlists, key = { "playlist-${it.id}" }, span = { GridItemSpan(maxLineSpan) }) { d ->
+                        val p = playlistProgress[d.id]
+                        ListItem(
+                            modifier = Modifier.clickable { vm.push(Detail.PlaylistPage(d.id, d.playlist.name)) },
+                            leadingContent = { Cover(vm.api, d.playlist.tracks.firstOrNull()?.albumId ?: 0L, false, 64, Modifier.size(52.dp)) },
+                            headlineContent = { Text(d.playlist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = {
+                                Text(
+                                    "${d.playlist.tracks.size} titres · " + when {
+                                        p != null && p.error == null -> if (p.queued) "en attente…" else "téléchargement ${p.done}/${p.total}"
+                                        p?.error != null -> "interrompue ${d.tracksOnPhone}/${d.playlist.tracks.size}"
+                                        d.complete -> megabytes(d.bytes)
+                                        else -> "incomplète ${d.tracksOnPhone}/${d.playlist.tracks.size}"
+                                    },
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                        )
+                    }
+                    if (sorted.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                        Text("Albums", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
+                    }
+                }
                 items(sorted, key = { it.id }) { d ->
                     val p = progress[d.id]
                     val status = when {
@@ -548,19 +578,35 @@ private fun DownloadControl(vm: AppViewModel, d: AlbumDetail) {
 fun DownloadsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     val albums by LocalLibrary.albums.collectAsState()
     val progress by LocalLibrary.progress.collectAsState()
+    val playlists by LocalLibrary.playlists.collectAsState()
     var toDelete by remember { mutableStateOf<DownloadedAlbum?>(null) }
+    var playlistToDelete by remember { mutableStateOf<DownloadedPlaylist?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val free = remember(albums) { (context.getExternalFilesDir(null) ?: context.filesDir).usableSpace }
 
     Column(modifier.fillMaxSize()) {
         Text(
-            "${albums.size} album(s) · ${megabytes(LocalLibrary.totalBytes())} sur le téléphone · ${"%.1f".format(free / 1_073_741_824.0)} Go libres",
+            "${albums.size} album(s) · ${playlists.size} playlist(s) · ${megabytes(LocalLibrary.totalBytes())} sur le téléphone · ${"%.1f".format(free / 1_073_741_824.0)} Go libres",
             style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp),
         )
-        if (albums.isEmpty()) {
-            Text("Aucun album téléchargé. Ouvre un album et appuie sur « Télécharger ».", Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (albums.isEmpty() && playlists.isEmpty()) {
+            Text("Rien de téléchargé. Ouvre un album et appuie sur « Télécharger », ou télécharge la file depuis le lecteur.", Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         LazyColumn(Modifier.fillMaxSize()) {
+            items(playlists, key = { "playlist-${it.id}" }) { d ->
+                ListItem(
+                    modifier = Modifier.clickable { vm.push(Detail.PlaylistPage(d.id, d.playlist.name)) },
+                    leadingContent = { Cover(vm.api, d.playlist.tracks.firstOrNull()?.albumId ?: 0L, false, 64, Modifier.size(52.dp)) },
+                    headlineContent = { Text(d.playlist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    supportingContent = {
+                        Text(
+                            "playlist · ${d.playlist.tracks.size} titres · " + if (d.complete) megabytes(d.bytes) else "incomplète ${d.tracksOnPhone}/${d.playlist.tracks.size}",
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    trailingContent = { IconButton(onClick = { playlistToDelete = d }) { Icon(Icons.Default.Delete, "Supprimer") } },
+                )
+            }
             items(albums, key = { it.id }) { a ->
                 val p = progress[a.id]
                 ListItem(
@@ -579,6 +625,15 @@ fun DownloadsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                 )
             }
         }
+    }
+    playlistToDelete?.let { d ->
+        AlertDialog(
+            onDismissRequest = { playlistToDelete = null },
+            title = { Text("Supprimer du téléphone ?") },
+            text = { Text("« ${d.playlist.name} » (${megabytes(d.bytes)}) ne sera plus disponible hors connexion.") },
+            confirmButton = { TextButton(onClick = { vm.deletePlaylist(d.id); playlistToDelete = null }) { Text("Supprimer") } },
+            dismissButton = { TextButton(onClick = { playlistToDelete = null }) { Text("Garder") } },
+        )
     }
     toDelete?.let { a ->
         AlertDialog(

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Remove
@@ -104,6 +105,9 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     val cur = s.current
     val playing = s.status == "playing"
     val pos = rememberPositionMs(ui)
+    val server by vm.server.collectAsState()
+    var savePlaylist by remember { mutableStateOf(false) }
+    if (savePlaylist) SavePlaylistDialog(vm, s.queue) { savePlaylist = false }
 
     // Endless queue: when the user scrolls close to its end, 10 more suggestions are added (the key is the queue size, so
     // a new batch is asked only once the previous one has arrived, and an empty answer does not loop).
@@ -223,7 +227,19 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
             }
         }
         if (s.queue.size > 1) {
-            item { Text("File d'attente", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 20.dp, bottom = 4.dp)) }
+            item {
+                Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("File d'attente", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                    // Keep the whole queue on the phone (needs the server to fetch the files).
+                    if (server == Server.Online) {
+                        TextButton(onClick = { savePlaylist = true }) {
+                            Icon(Icons.Default.Download, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Télécharger")
+                        }
+                    }
+                }
+            }
             // The tracks the server suggested are marked (a star, why) and start under a "Suggestions" heading.
             val firstSuggested = s.queue.indexOfFirst { it.reason != null || it.trackId in vm.suggested }
             itemsIndexed(s.queue, key = { i, q -> "$i-${q.trackId}-${vm.queueRevision}" }) { i, q ->

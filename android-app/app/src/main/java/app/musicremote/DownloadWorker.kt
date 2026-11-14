@@ -46,6 +46,26 @@ class DownloadWorker(private val ctx: Context, params: WorkerParameters) : Corou
             WorkManager.getInstance(ctx).enqueueUniqueWork("downloads", ExistingWorkPolicy.APPEND_OR_REPLACE, request)
         }
 
+        fun tagPlaylist(id: Long) = "dlp_$id"
+
+        /** Queue a playlist (same single chain as the albums). */
+        fun enqueuePlaylist(ctx: Context, playlistId: Long) {
+            LocalLibrary.init(ctx)
+            LocalLibrary.markPlaylistQueued(playlistId, LocalLibrary.playlist(playlistId)?.playlist?.tracks?.size ?: 0)
+            val request = OneTimeWorkRequestBuilder<DownloadWorker>()
+                .setInputData(workDataOf("playlist_id" to playlistId))
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.SECONDS)
+                .addTag(tagPlaylist(playlistId))
+                .build()
+            WorkManager.getInstance(ctx).enqueueUniqueWork("downloads", ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+        }
+
+        fun cancelPlaylist(ctx: Context, playlistId: Long) {
+            WorkManager.getInstance(ctx).cancelAllWorkByTag(tagPlaylist(playlistId))
+            LocalLibrary.clearPlaylistProgress(playlistId)
+        }
+
         fun cancel(ctx: Context, albumId: Long) {
             WorkManager.getInstance(ctx).cancelAllWorkByTag(tag(albumId))
             LocalLibrary.clearProgress(albumId)
@@ -74,22 +94,24 @@ class DownloadWorker(private val ctx: Context, params: WorkerParameters) : Corou
 
     override suspend fun doWork(): Result {
         val albumId = inputData.getLong("album_id", -1)
-        if (albumId < 0) return Result.failure()
+        val playlistId = inputData.getLong("playlist_id", -1)
+        if (albumId < 0 && playlistId < 0) return Result.failure()
+        fun failed(message: String) = if (playlistId >= 0) LocalLibrary.markPlaylistFailed(playlistId, message) else LocalLibrary.markFailed(albumId, message)
         LocalLibrary.init(ctx)
         val base = ctx.getSharedPreferences("server", Context.MODE_PRIVATE).getString("address", null) ?: return Result.failure()
         runCatching { setForeground(getForegroundInfo()) }
         val api = Api(base)
         return try {
-            LocalLibrary.download(api, albumId)
+            if (playlistId >= 0) LocalLibrary.downloadPlaylist(api, playlistId) else LocalLibrary.download(api, albumId)
             Result.success()
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
             // Network trouble (left home, server restarting) or no room left: retry later, resuming at the first missing track.
-            LocalLibrary.markFailed(albumId, e.message ?: "Interrompu")
+            failed(e.message ?: "Interrompu")
             if (runAttemptCount < MAX_ATTEMPTS && e.message?.startsWith("Espace insuffisant") != true) Result.retry() else Result.failure()
         } catch (e: Exception) {
-            LocalLibrary.markFailed(albumId, e.message ?: e.javaClass.simpleName)
+            failed(e.message ?: e.javaClass.simpleName)
             Result.failure()
         }
     }

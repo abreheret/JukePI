@@ -28,6 +28,7 @@ Target: **Android 17 (API 37)** (developed on a Pixel 8a). Kotlin, Jetpack Compo
 | **Output choice Amplifier / Phone** in the full-screen player (queue and position carry over) | done; selector verified, hand-over not tested yet |
 | **Play on the phone** (ExoPlayer): downloaded files, or streamed from the server | done, tested |
 | **Download albums** (Download / Cancel / Remove on the album page, resumes after interruption) | done, tested (6 tracks, 47 MB in ~3 s) |
+| **Download the queue as a playlist** ("Télécharger" next to the queue in the player: the whole queue is saved under an automatic, editable name such as "Michael Jackson et autres · 14 nov."; played, renamed or deleted from the "Downloaded" tab) | done, tested |
 | **"Downloaded" tab**: everything on the phone, state and size of each album, free space, management | done, verified |
 | **Offline mode**: automatic detection, banner, albums / artists / search limited to downloaded music, output forced to the phone | done, tested by cutting the network |
 | **"Same style"** (full-screen player button) and **suggestions behind what you play**: when a queue starts, 10 tracks of the library close to it are appended, marked with a star and a "Suggestions" heading in the queue (skip what you do not want); 10 more when the last track starts (setting, on by default; needs the server) | done; the server side is tested on the real library, the queue marking not yet checked by a real listen |

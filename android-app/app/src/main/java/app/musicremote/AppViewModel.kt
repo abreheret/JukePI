@@ -39,6 +39,7 @@ sealed interface Detail {
     data object NowPlaying : Detail
     data object Settings : Detail
     data object Downloads : Detail
+    data class PlaylistPage(val id: Long, val title: String) : Detail
 }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -459,6 +460,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setMute(on: Boolean) { if (phoneMode) phone { it.setDeviceMuted(on, 0) } else act { mute(on) } }
 
     // ---- downloads (albums kept on the phone) ----
+    /** Keep the queue as it is now on the phone: saved first (so it appears at once), then downloaded. Needs the server. */
+    fun savePlaylist(name: String, tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        if (PlayerRepository.server.value != Server.Online) { message = "Le téléchargement demande le serveur."; return }
+        val id = LocalLibrary.createPlaylist(name, tracks)
+        DownloadWorker.enqueuePlaylist(getApplication(), id)
+        message = "« $name » : téléchargement lancé (${tracks.size} titres)."
+    }
+    fun downloadPlaylist(id: Long) = DownloadWorker.enqueuePlaylist(getApplication(), id)
+    fun cancelPlaylistDownload(id: Long) = DownloadWorker.cancelPlaylist(getApplication(), id)
+    fun renamePlaylist(id: Long, name: String) = LocalLibrary.renamePlaylist(id, name)
+    fun deletePlaylist(id: Long) {
+        DownloadWorker.cancelPlaylist(getApplication(), id)
+        LocalLibrary.deletePlaylist(id)
+    }
+
+    /** Play a saved playlist from track `start`: on the phone (files on the phone) or on the amplifier (needs the server). */
+    fun playPlaylist(p: Playlist, start: Int) {
+        if (phoneMode) playOnPhone(p.tracks, start) else act { playTracks(p.tracks.map { it.id }, start) }
+    }
+
     fun downloadAlbum(albumId: Long) = DownloadWorker.enqueue(getApplication(), albumId)
     fun cancelDownload(albumId: Long) = DownloadWorker.cancel(getApplication(), albumId)
     fun deleteDownload(albumId: Long) {

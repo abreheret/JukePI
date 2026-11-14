@@ -70,6 +70,9 @@ data class QueueItem(
     val reason: String? = null,
 )
 
+/** A queue entry as a track (what a saved playlist keeps). */
+fun QueueItem.toTrack() = Track(id = trackId, albumId = albumId, title = title, artist = artist, durationMs = durationMs)
+
 /** Mirror of the server's GET /player snapshot. `status` is stopped | loading | playing | paused. */
 @Serializable
 data class PlayerSnapshot(
