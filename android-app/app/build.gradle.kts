@@ -43,6 +43,12 @@ android {
 
     buildFeatures { compose = true }
 
+    // Only the languages the app is translated into (see res/xml/locales_config.xml): without this, the libraries
+    // bring their own strings in dozens of other languages and the app would be half translated for those users.
+    androidResources {
+        localeFilters += listOf("en", "fr", "de", "it", "es", "pt", "nl", "ca", "sv", "da", "nb", "fi", "pl")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

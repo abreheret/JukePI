@@ -74,7 +74,7 @@ class DownloadWorker(private val ctx: Context, params: WorkerParameters) : Corou
 
     private fun notification(text: String) = NotificationCompat.Builder(ctx, CHANNEL)
         .setSmallIcon(R.drawable.ic_stat_music)
-        .setContentTitle("Téléchargement")
+        .setContentTitle(ctx.getString(R.string.dl_notification_title))
         .setContentText(text)
         .setOngoing(true)
         .setOnlyAlertOnce(true)
@@ -83,13 +83,13 @@ class DownloadWorker(private val ctx: Context, params: WorkerParameters) : Corou
     private fun ensureChannel() {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL) == null) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Téléchargements", NotificationManager.IMPORTANCE_LOW))
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, ctx.getString(R.string.dl_channel_name), NotificationManager.IMPORTANCE_LOW))
         }
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
         ensureChannel()
-        return ForegroundInfo(NOTIFICATION_ID, notification("Préparation…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        return ForegroundInfo(NOTIFICATION_ID, notification(ctx.getString(R.string.dl_preparing)), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
     override suspend fun doWork(): Result {
@@ -108,8 +108,9 @@ class DownloadWorker(private val ctx: Context, params: WorkerParameters) : Corou
             throw e
         } catch (e: IOException) {
             // Network trouble (left home, server restarting) or no room left: retry later, resuming at the first missing track.
-            failed(e.message ?: "Interrompu")
-            if (runAttemptCount < MAX_ATTEMPTS && e.message?.startsWith("Espace insuffisant") != true) Result.retry() else Result.failure()
+            val noSpace = e is NotEnoughSpace
+            failed(if (noSpace) ctx.getString(R.string.err_no_space) else e.message ?: ctx.getString(R.string.dl_interrupted_default))
+            if (runAttemptCount < MAX_ATTEMPTS && !noSpace) Result.retry() else Result.failure()
         } catch (e: Exception) {
             failed(e.message ?: e.javaClass.simpleName)
             Result.failure()

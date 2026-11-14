@@ -43,6 +43,9 @@ sealed interface Detail {
 }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
+    /** A text of the user's language for messages built outside the UI. */
+    private fun str(@androidx.annotation.StringRes id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
+
     private val prefs = app.getSharedPreferences("server", Context.MODE_PRIVATE)
 
     var address by mutableStateOf(prefs.getString("address", null))
@@ -113,7 +116,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         toggledAt = SystemClock.elapsedRealtime()
         val a = api ?: return
         if (serverSuggests && PlayerRepository.server.value == Server.Online) {
-            viewModelScope.launch { try { a.setAutoSuggest(on) } catch (e: CancellationException) { throw e } catch (e: Exception) { message = "Réglage non transmis au serveur : ${e.message ?: e.javaClass.simpleName}" } }
+            viewModelScope.launch { try { a.setAutoSuggest(on) } catch (e: CancellationException) { throw e } catch (e: Exception) { message = str(R.string.msg_setting_not_sent, e.message ?: e.javaClass.simpleName) } }
         }
     }
 
@@ -200,7 +203,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val snap = player.value.snap
         val seedId = seed ?: snap.current?.trackId ?: return
         if (PlayerRepository.server.value != Server.Online) {
-            if (!auto) message = "Hors connexion : les suggestions demandent le serveur."
+            if (!auto) message = str(R.string.msg_offline_suggestions)
             return
         }
         if (suggesting) return
@@ -212,7 +215,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val rec = a.recommendations(seedId, limit, snap.queue.map { it.trackId })
                 if (rec.items.isEmpty()) {
-                    if (!auto) message = "Aucune suggestion trouvée pour ce titre."
+                    if (!auto) message = str(R.string.msg_no_suggestion)
                     return@launch
                 }
                 rememberSuggested(rec.items) // before the tracks reach the queue, so they are labelled at once
@@ -228,13 +231,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     if (stopped) a.jump(oldSize)
                 }
                 if (!auto) {
-                    val how = if (rec.source == "lastfm") "d'après Last.fm" else "d'après les genres de ta bibliothèque"
-                    message = "${rec.items.size} titres ajoutés à la file ($how)."
+                    val how = str(if (rec.source == "lastfm") R.string.suggest_how_lastfm else R.string.suggest_how_genres)
+                    message = getApplication<Application>().resources.getQuantityString(R.plurals.msg_tracks_added, rec.items.size, rec.items.size, how)
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (!auto) message = "Suggestions indisponibles : ${e.message ?: e.javaClass.simpleName}"
+                if (!auto) message = str(R.string.msg_suggestions_failed, e.message ?: e.javaClass.simpleName)
             } finally {
                 suggesting = false
             }
@@ -268,9 +271,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             searching = false
             if (found != null) {
                 saveAddress(found)
-                discoveryNote = "Serveur trouvé : $found"
+                discoveryNote = str(R.string.discovery_found, found)
             } else {
-                discoveryNote = "Aucun serveur trouvé. Vérifie que le téléphone est sur le même Wi-Fi, ou saisis l'adresse à la main."
+                discoveryNote = str(R.string.discovery_none)
                 if (api == null) push(Detail.Settings)
             }
         }
@@ -281,7 +284,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val a = api ?: return
         viewModelScope.launch {
             try { a.block() } catch (e: CancellationException) { throw e } catch (e: Exception) {
-                message = "Commande refusée : ${e.message ?: e.javaClass.simpleName}"
+                message = str(R.string.msg_command_refused, e.message ?: e.javaClass.simpleName)
             }
         }
     }
@@ -292,7 +295,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val phoneMode get() = PlayerRepository.output.value == Output.Phone
 
     private fun phone(block: (ExoPlayer) -> Unit) =
-        PhoneControl.use({ message = "Le lecteur du téléphone démarre, réessaie dans un instant." }, block)
+        PhoneControl.use({ message = str(R.string.msg_phone_player_starting) }, block)
 
     /**
      * Choose where the music comes out (player or Settings). What is playing moves with it: same queue, same track,
@@ -306,7 +309,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (from == o) return
         val online = PlayerRepository.server.value == Server.Online
         if (o == Output.Denon && !online) {
-            message = "Hors connexion : le Denon n'est pas joignable, la lecture reste sur le téléphone."
+            message = str(R.string.msg_offline_denon)
             return
         }
         val src = if (from == Output.Phone) PlayerRepository.phoneUi.value else PlayerRepository.ui.value
@@ -325,7 +328,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (o == Output.Phone) {
             val base = if (online) api?.base else null
             val items = snap.queue.mapNotNull { q -> phoneItem(Track(q.trackId, q.albumId, q.title, q.artist, null, q.durationMs), base) }
-            if (items.isEmpty()) { message = "Ces titres ne sont pas disponibles sur le téléphone."; return }
+            if (items.isEmpty()) { message = str(R.string.msg_not_on_phone); return }
             val start = items.indexOfFirst { it.mediaId == snap.queue[index].trackId.toString() }.coerceAtLeast(0)
             phone { PhoneControl.play(it, items, start, position) }
         } else {
@@ -412,7 +415,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val startId = tracks.getOrNull(start)?.id
         val base = if (PlayerRepository.server.value == Server.Online) api?.base else null
         val items = tracks.mapNotNull { phoneItem(it, base) }
-        if (items.isEmpty()) { message = "Ces titres ne sont pas disponibles sur le téléphone."; return }
+        if (items.isEmpty()) { message = str(R.string.msg_not_on_phone); return }
         val first = items.indexOfFirst { it.mediaId == startId?.toString() }.coerceAtLeast(0)
         phone { PhoneControl.play(it, items, first) }
     }
@@ -435,7 +438,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val a = api ?: return
         viewModelScope.launch {
             try { a.removeFromQueue(index, trackId) } catch (e: CancellationException) { throw e } catch (e: Exception) {
-                message = "Titre non retiré : ${e.message ?: e.javaClass.simpleName}"
+                message = str(R.string.msg_remove_failed, e.message ?: e.javaClass.simpleName)
                 queueRevision++
             }
         }
@@ -463,10 +466,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Keep the queue as it is now on the phone: saved first (so it appears at once), then downloaded. Needs the server. */
     fun savePlaylist(name: String, tracks: List<Track>) {
         if (tracks.isEmpty()) return
-        if (PlayerRepository.server.value != Server.Online) { message = "Le téléchargement demande le serveur."; return }
+        if (PlayerRepository.server.value != Server.Online) { message = str(R.string.msg_download_needs_server); return }
         val id = LocalLibrary.createPlaylist(name, tracks)
         DownloadWorker.enqueuePlaylist(getApplication(), id)
-        message = "« $name » : téléchargement lancé (${tracks.size} titres)."
+        message = getApplication<Application>().resources.getQuantityString(R.plurals.msg_download_started, tracks.size, name, tracks.size)
     }
     fun downloadPlaylist(id: Long) = DownloadWorker.enqueuePlaylist(getApplication(), id)
     fun cancelPlaylistDownload(id: Long) = DownloadWorker.cancelPlaylist(getApplication(), id)

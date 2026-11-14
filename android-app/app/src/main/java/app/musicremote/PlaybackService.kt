@@ -70,10 +70,10 @@ class PlaybackService : MediaSessionService() {
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val back = CommandButton.Builder(CommandButton.ICON_SKIP_BACK_10)
-            .setPlayerCommand(Player.COMMAND_SEEK_BACK).setDisplayName("Reculer de 10 secondes")
+            .setPlayerCommand(Player.COMMAND_SEEK_BACK).setDisplayName(getString(R.string.skip_back_10))
             .setSlots(CommandButton.SLOT_OVERFLOW).build()
         val forward = CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_10)
-            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD).setDisplayName("Avancer de 10 secondes")
+            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD).setDisplayName(getString(R.string.skip_forward_10))
             .setSlots(CommandButton.SLOT_OVERFLOW).build()
         session = MediaSession.Builder(this, if (PlayerRepository.output.value == Output.Phone) l else r)
             .setSessionActivity(open)

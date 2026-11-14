@@ -12,9 +12,7 @@ data class Album(
     val year: Int? = null,
     @SerialName("track_count") val trackCount: Int = 0,
     @SerialName("has_cover") val hasCover: Boolean = false,
-) {
-    val artistLabel: String get() = if (variousArtists) "Artistes divers" else artist.orEmpty()
-}
+)
 
 @Serializable
 data class AlbumsPage(val total: Int = 0, val items: List<Album> = emptyList())

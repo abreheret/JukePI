@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overrides of values-pt (European) for Brazilian wording; everything else falls back to values-pt. -->
+<resources>
+    <string name="dl_channel_name">Downloads</string>
+    <string name="dl_notification_title">Download</string>
+    <string name="dl_preparing">Preparando…</string>
+    <string name="open_app_settings">Abrir as configurações do app</string>
+    <string name="offline_banner">Sem conexão: apenas os álbuns baixados estão disponíveis</string>
+    <string name="tab_downloaded">Baixados</string>
+    <string name="title_downloads">Downloads</string>
+    <string name="permission_body">O Android 17 pede sua autorização para que o app alcance seu servidor de música na rede de casa.</string>
+    <string name="download">Baixar</string>
+    <string name="loading">Carregando…</string>
+    <string name="connecting">Conectando ao servidor…</string>
+    <string name="connection_lost">Conexão com o servidor perdida, reconectando…</string>
+    <string name="denon_unreachable">O Denon está inacessível.</string>
+    <string name="finding_suggestions">Procurando sugestões…</string>
+    <string name="no_downloaded_albums">Nenhum álbum baixado. Abra um álbum quando o servidor estiver acessível e toque em «Baixar».</string>
+    <string name="nothing_on_phone">Ainda nada no telefone. Abra um álbum e toque em «Baixar», ou baixe a fila pelo player: ela ficará disponível sem o servidor e tocará no telefone.</string>
+    <string name="nothing_downloaded">Nada baixado. Abra um álbum e toque em «Baixar», ou baixe a fila pelo player.</string>
+    <string name="dl_waiting">Aguardando…</string>
+    <string name="dl_progress">Baixando %1$d/%2$d</string>
+    <string name="download_incomplete">Download incompleto</string>
+    <string name="downloaded">Baixado</string>
+    <string name="searching">Pesquisando…</string>
+    <string name="downloaded_albums">Álbuns baixados</string>
+    <string name="search_in_downloaded">Nos álbuns baixados</string>
+    <string name="search_tip">Digite algumas letras: a pesquisa ignora os acentos.</string>
+    <string name="suggestions_help">Quando você inicia um álbum, algumas faixas próximas da sua biblioteca são adicionadas no fim da fila, marcadas com uma estrela: pule as que não quiser ouvir. Outras são adicionadas quando a fila está acabando, e 10 de cada vez quando você rola a fila para baixo. Com o amplificador, é o servidor que as adiciona: a música continua mesmo com o app fechado, e a configuração vale para todos os telefones. O servidor pode consultar o Last.fm se houver uma chave configurada: ele envia então o artista e o título.</string>
+    <string name="testing">Testando…</string>
+    <string name="connected">Conectado ao servidor.</string>
+    <string name="on_phone_size">No telefone · %1$s</string>
+    <string name="delete_album_text">«%1$s» deixará de estar disponível sem conexão. O álbum continua no servidor.</string>
+    <string name="delete_item_text">«%1$s» (%2$s) deixará de estar disponível sem conexão.</string>
+    <string name="delete_playlist_text">«%1$s» (%2$s) deixará de estar disponível sem conexão. As faixas continuam no servidor.</string>
+    <string name="playlist_word">playlist</string>
+    <string name="downloading_lower">baixando…</string>
+    <string name="save_queue_title">Baixar a fila?</string>
+    <string name="playlist_name">Nome da playlist</string>
+    <string name="playlist_gone">Esta playlist não está mais no telefone.</string>
+    <string name="rename_playlist">Renomear a playlist</string>
+    <string name="playlist_default">Playlist</string>
+    <string name="playlists_header">Playlists</string>
+    <string name="rename">Renomear</string>
+    <string name="msg_offline_suggestions">Sem conexão: as sugestões precisam do servidor.</string>
+    <string name="discovery_none">Nenhum servidor encontrado. Verifique se o telefone está na mesma rede Wi-Fi, ou digite o endereço manualmente.</string>
+    <string name="msg_phone_player_starting">O player do telefone está iniciando, tente novamente em instantes.</string>
+    <string name="msg_offline_denon">Sem conexão: o Denon está inacessível, a reprodução continua no telefone.</string>
+    <string name="msg_download_needs_server">O download precisa do servidor.</string>
+    <string name="interrupted_why">Interrompido: %1$s</string>
+    <plurals name="n_playlists">
+        <item quantity="one">%d playlist</item>
+        <item quantity="many">%d playlists</item>
+        <item quantity="other">%d playlists</item>
+    </plurals>
+    <plurals name="msg_download_started">
+        <item quantity="one">«%1$s»: download iniciado (%2$d faixa).</item>
+        <item quantity="many">«%1$s»: download iniciado (%2$d faixas).</item>
+        <item quantity="other">«%1$s»: download iniciado (%2$d faixas).</item>
+    </plurals>
+</resources>

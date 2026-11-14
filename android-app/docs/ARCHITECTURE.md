@@ -127,6 +127,10 @@ Adaptive icon in vectors (`res/drawable/ic_launcher_*.xml`, `res/mipmap-anydpi-v
 
 Coil 3 (`AsyncImage`) loads `GET /cover/{id}?size=` at 64 px (lists), 300 px (grid), 600 px (album page, player). **A cover is never requested when `has_cover` is false**: the server would answer `404`. The ViewModel remembers `has_cover` of each album seen (`remember`) so the mini player knows whether the current album has one; unknown = try, with the note icon as a fallback on error. Downloaded albums show their local `cover.jpg`, with no network.
 
+## Languages
+
+All texts are resources: `res/values/strings.xml` is English (the fallback for any other language), `values-fr`, `-de`, `-it`, `-es`, `-pt` (+ `-pt-rBR` overrides), `-nl`, `-ca`, `-sv`, `-da`, `-nb`, `-fi`, `-pl` are the translations. The app follows the phone's language; `res/xml/locales_config.xml` (`android:localeConfig`) lists them for the per-app language setting of Android 13+, and `androidResources.localeFilters` keeps the libraries from adding strings in other languages (the app would be half translated for those users). Compose uses `stringResource` / `pluralStringResource`; the view model and the download worker use `getString`. What is not translated on purpose: protocol values (`status`, reasons such as `same_genre` are mapped to a label at display time), the product name, the `Denon` brand, and error messages that come from the server or from the system. Sizes use `Formatter.formatShortFileSize`; the date of an automatic playlist name uses `DateFormat.getBestDateTimePattern`. A failure that the code must recognise is a type (`NotEnoughSpace`), never a message.
+
 ## Lists
 
 Album grid: 60 albums per page, the next page is requested when one of the last 12 items becomes visible. The "random" sort has no pagination (a button reshuffles). Search: 150 ms wait after the last keystroke, then one `GET /search` call (the server answers in 10–17 ms).

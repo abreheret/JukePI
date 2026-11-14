@@ -42,6 +42,9 @@ private val downloadClient = client.newBuilder().readTimeout(60, TimeUnit.SECOND
 
 class ApiException(message: String) : Exception(message)
 
+/** The phone lacks room for a file. A type, not a message: the message is translated and shown by the caller. */
+class NotEnoughSpace : IOException()
+
 /** Thin client for the music server (see music-server/README.md). `base` looks like http://192.168.1.50:8765 */
 class Api(val base: String) {
 
@@ -118,7 +121,7 @@ class Api(val base: String) {
                 if (!r.isSuccessful) throw ApiException("HTTP ${r.code}")
                 val length = r.body.contentLength()
                 val room = (dest.parentFile ?: dest).usableSpace
-                if (length > 0 && room < length + minFreeBytes) throw IOException("Espace insuffisant sur le téléphone")
+                if (length > 0 && room < length + minFreeBytes) throw NotEnoughSpace()
                 try {
                     r.body.byteStream().use { input ->
                         dest.outputStream().use { out ->

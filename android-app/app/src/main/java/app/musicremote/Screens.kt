@@ -1,5 +1,7 @@
 package app.musicremote
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -40,7 +42,7 @@ private class Page(val items: List<Album> = emptyList(), val total: Int = 0, val
 private fun ErrorBox(text: String, onRetry: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(text, style = MaterialTheme.typography.bodyMedium)
-        Button(onClick = onRetry) { Text("Réessayer") }
+        Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
     }
 }
 
@@ -48,7 +50,7 @@ private fun ErrorBox(text: String, onRetry: () -> Unit) {
 // Albums grid (home tab, and the albums of one artist)
 
 // "listened": what was played first (the latest first), then the albums with a cover, the newest first.
-private val SORTS = listOf("listened" to "Récents", "name" to "A–Z", "artist" to "Artiste", "random" to "Au hasard")
+private val SORTS = listOf("listened" to R.string.sort_recent, "name" to R.string.sort_az, "artist" to R.string.sort_artist, "random" to R.string.sort_random)
 
 /** Is an album on the phone? Done = every track, Partial = some (an interrupted download). */
 private enum class Stored { None, Partial, Done }
@@ -69,16 +71,16 @@ fun AlbumsScreen(vm: AppViewModel, artist: String?, modifier: Modifier = Modifie
         if (artist == null && server == Server.Online) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 SORTS.forEach { (key, label) ->
-                    FilterChip(selected = sort == key, onClick = { sort = key }, label = { Text(label) })
+                    FilterChip(selected = sort == key, onClick = { sort = key }, label = { Text(stringResource(label)) })
                 }
-                if (sort == "random") IconButton(onClick = { seed++ }) { Icon(Icons.Default.Refresh, "Mélanger") }
+                if (sort == "random") IconButton(onClick = { seed++ }) { Icon(Icons.Default.Refresh, stringResource(R.string.shuffle)) }
             }
         }
         when {
             server == Server.Unknown -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
             // Away from the server nothing is asked of the network: the downloaded albums are all there is.
             server == Server.Offline -> LocalAlbumsGrid(vm, artist)
-            api == null -> ErrorBox("Aucun serveur configuré.") { vm.push(Detail.Settings) }
+            api == null -> ErrorBox(stringResource(R.string.no_server)) { vm.push(Detail.Settings) }
             else -> RemoteAlbums(vm, api, sort, seed, artist)
         }
     }
@@ -90,6 +92,7 @@ private fun RemoteAlbums(vm: AppViewModel, api: Api, sort: String, seed: Int, ar
     var retry by remember { mutableIntStateOf(0) }
     val grid = rememberLazyGridState()
     val stored = storedStates()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
 
     suspend fun load(offset: Int) {
         try {
@@ -99,7 +102,7 @@ private fun RemoteAlbums(vm: AppViewModel, api: Api, sort: String, seed: Int, ar
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            page = Page(page.items, page.total, false, "Serveur injoignable (${e.message ?: e.javaClass.simpleName})")
+            page = Page(page.items, page.total, false, ctx.getString(R.string.err_server_unreachable, e.message ?: e.javaClass.simpleName))
         }
     }
 
@@ -140,7 +143,7 @@ fun LocalAlbumsGrid(vm: AppViewModel, artist: String?, modifier: Modifier = Modi
     val albums = remember(library, artist) { LocalCatalog.albums(artist) }
     if (albums.isEmpty()) {
         Box(modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
-            Text("Aucun album téléchargé. Ouvre un album quand le serveur est joignable et appuie sur « Télécharger ».", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.no_downloaded_albums), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
     }
@@ -156,7 +159,7 @@ fun LocalAlbumsGrid(vm: AppViewModel, artist: String?, modifier: Modifier = Modi
 }
 
 /**
- * The "Téléchargés" tab: everything kept on the phone, with the state of each album (in progress, incomplete, or
+ * The "Downloaded" tab: everything kept on the phone, with the state of each album (in progress, incomplete, or
  * complete and its size). Works with or without the server.
  */
 @Composable
@@ -174,15 +177,15 @@ fun DownloadedScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "${library.size} album(s) · ${playlists.size} playlist(s) · ${megabytes(LocalLibrary.totalBytes())} · ${"%.1f".format(free / 1_073_741_824.0)} Go libres",
+                storageSummary(library.size, playlists.size, free, false),
                 style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = { vm.push(Detail.Downloads) }) { Text("Gérer") }
+            TextButton(onClick = { vm.push(Detail.Downloads) }) { Text(stringResource(R.string.manage)) }
         }
         if (sorted.isEmpty() && playlists.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                 Text(
-                    "Rien sur le téléphone pour l'instant. Ouvre un album et appuie sur « Télécharger », ou télécharge la file d'attente depuis le lecteur : ce sera disponible sans le serveur, et jouera sur le téléphone.",
+                    stringResource(R.string.nothing_on_phone),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -196,7 +199,7 @@ fun DownloadedScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
             ) {
                 if (playlists.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
-                        Text("Playlists", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.playlists_header), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
                     }
                     items(playlists, key = { "playlist-${it.id}" }, span = { GridItemSpan(maxLineSpan) }) { d ->
                         val p = playlistProgress[d.id]
@@ -206,11 +209,11 @@ fun DownloadedScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                             headlineContent = { Text(d.playlist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             supportingContent = {
                                 Text(
-                                    "${d.playlist.tracks.size} titres · " + when {
-                                        p != null && p.error == null -> if (p.queued) "en attente…" else "téléchargement ${p.done}/${p.total}"
-                                        p?.error != null -> "interrompue ${d.tracksOnPhone}/${d.playlist.tracks.size}"
-                                        d.complete -> megabytes(d.bytes)
-                                        else -> "incomplète ${d.tracksOnPhone}/${d.playlist.tracks.size}"
+                                    trackCount(d.playlist.tracks.size) + " · " + when {
+                                        p != null && p.error == null -> if (p.queued) stringResource(R.string.dl_waiting) else stringResource(R.string.dl_progress, p.done, p.total)
+                                        p?.error != null -> stringResource(R.string.pl_interrupted_n, d.tracksOnPhone, d.playlist.tracks.size)
+                                        d.complete -> fileSize(d.bytes)
+                                        else -> stringResource(R.string.pl_incomplete_n, d.tracksOnPhone, d.playlist.tracks.size)
                                     },
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
@@ -218,16 +221,16 @@ fun DownloadedScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                         )
                     }
                     if (sorted.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                        Text("Albums", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
+                        Text(stringResource(R.string.tab_albums), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
                     }
                 }
                 items(sorted, key = { it.id }) { d ->
                     val p = progress[d.id]
                     val status = when {
-                        p != null && p.error == null -> if (p.queued) "En attente…" else "Téléchargement ${p.done}/${p.total}"
-                        p?.error != null -> "Interrompu ${d.tracksOnPhone}/${d.detail.tracks.size}"
-                        d.complete -> "Complet · ${megabytes(d.bytes)}"
-                        else -> "Incomplet ${d.tracksOnPhone}/${d.detail.tracks.size}"
+                        p != null && p.error == null -> if (p.queued) stringResource(R.string.dl_waiting) else stringResource(R.string.dl_progress, p.done, p.total)
+                        p?.error != null -> stringResource(R.string.dl_interrupted_n, d.tracksOnPhone, d.detail.tracks.size)
+                        d.complete -> stringResource(R.string.dl_complete_size, fileSize(d.bytes))
+                        else -> stringResource(R.string.dl_incomplete_n, d.tracksOnPhone, d.detail.tracks.size)
                     }
                     AlbumCell(vm.api, d.detail.album, if (d.complete) Stored.Done else Stored.Partial, status) {
                         vm.push(Detail.AlbumPage(d.id, d.detail.album.name))
@@ -247,7 +250,7 @@ private fun AlbumCell(api: Api?, a: Album, stored: Stored, status: String? = nul
                 val done = stored == Stored.Done
                 Icon(
                     if (done) Icons.Default.DownloadDone else Icons.Default.Download,
-                    if (done) "Téléchargé" else "Téléchargement incomplet",
+                    stringResource(if (done) R.string.downloaded else R.string.download_incomplete),
                     tint = if (done) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onTertiary,
                     modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(24.dp)
                         .background(if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary, androidx.compose.foundation.shape.CircleShape)
@@ -257,7 +260,7 @@ private fun AlbumCell(api: Api?, a: Album, stored: Stored, status: String? = nul
         }
         Spacer(Modifier.height(6.dp))
         Text(a.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(a.artistLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(a.artistText(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (status != null) Text(status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1)
     }
 }
@@ -274,6 +277,7 @@ fun AlbumDetailScreen(vm: AppViewModel, id: Long, modifier: Modifier = Modifier)
     val ui by vm.player.collectAsState()
     val server by vm.server.collectAsState()
     val library by LocalLibrary.albums.collectAsState() // recompose when a track lands on the phone
+    val ctx = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(api, id, retry, server) {
         error = null
@@ -282,7 +286,7 @@ fun AlbumDetailScreen(vm: AppViewModel, id: Long, modifier: Modifier = Modifier)
             // Away from the server: the copy saved with the download is all there is.
             Server.Offline -> {
                 detail = LocalLibrary.detail(id)
-                if (detail == null) error = "Cet album n'est pas sur le téléphone."
+                if (detail == null) error = ctx.getString(R.string.album_not_on_phone)
             }
             Server.Online -> try {
                 detail = api!!.album(id).also { vm.remember(listOf(it.album)) }
@@ -290,7 +294,7 @@ fun AlbumDetailScreen(vm: AppViewModel, id: Long, modifier: Modifier = Modifier)
                 throw e
             } catch (e: Exception) {
                 detail = LocalLibrary.detail(id)
-                if (detail == null) error = "Impossible de charger l'album (${e.message})"
+                if (detail == null) error = ctx.getString(R.string.err_album_load, e.message ?: e.javaClass.simpleName)
             }
         }
     }
@@ -305,14 +309,14 @@ fun AlbumDetailScreen(vm: AppViewModel, id: Long, modifier: Modifier = Modifier)
                     Spacer(Modifier.height(12.dp))
                     Text(d.album.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     Text(
-                        listOfNotNull(d.album.artistLabel.ifEmpty { null }, d.album.year?.toString(), "${d.tracks.size} titres").joinToString(" · "),
+                        listOfNotNull(d.album.artistText().ifEmpty { null }, d.album.year?.toString(), trackCount(d.tracks.size)).joinToString(" · "),
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(12.dp))
                     Button(onClick = { vm.playAlbum(d, 0) }) {
                         Icon(Icons.Default.PlayArrow, null)
                         Spacer(Modifier.width(6.dp))
-                        Text("Tout lire")
+                        Text(stringResource(R.string.play_all))
                     }
                     DownloadControl(vm, d)
                     // All the albums of this artist (not for a compilation, whose "artist" is only the most frequent one).
@@ -321,7 +325,7 @@ fun AlbumDetailScreen(vm: AppViewModel, id: Long, modifier: Modifier = Modifier)
                         TextButton(onClick = { vm.push(Detail.ArtistPage(artistName)) }) {
                             Icon(Icons.Default.Album, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Tous les albums de $artistName", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(stringResource(R.string.all_albums_of, artistName), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -342,7 +346,7 @@ fun AlbumDetailScreen(vm: AppViewModel, id: Long, modifier: Modifier = Modifier)
                     supportingContent = if (d.album.variousArtists && t.artist != null) { { Text(t.artist) } } else null,
                     trailingContent = {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            if (onPhone) Icon(Icons.Default.DownloadDone, "Sur le téléphone", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            if (onPhone) Icon(Icons.Default.DownloadDone, stringResource(R.string.on_the_phone), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                             Text(formatMs(t.durationMs), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     },
@@ -360,7 +364,8 @@ fun ArtistsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     val api = vm.api
     val server by vm.server.collectAsState()
     val library by LocalLibrary.albums.collectAsState()
-    if (api == null && server != Server.Offline) { ErrorBox("Aucun serveur configuré.") { vm.push(Detail.Settings) }; return }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    if (api == null && server != Server.Offline) { ErrorBox(stringResource(R.string.no_server)) { vm.push(Detail.Settings) }; return }
     var artists by remember(api, server) { mutableStateOf<List<ArtistItem>?>(null) }
     var error by remember(api, server) { mutableStateOf<String?>(null) }
     var retry by remember { mutableIntStateOf(0) }
@@ -369,7 +374,7 @@ fun ArtistsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
         when (server) {
             Server.Unknown -> {}
             Server.Offline -> artists = LocalCatalog.artists() // only the artists of the downloaded albums
-            Server.Online -> try { artists = api!!.artists().items } catch (e: CancellationException) { throw e } catch (e: Exception) { error = "Serveur injoignable (${e.message})" }
+            Server.Online -> try { artists = api!!.artists().items } catch (e: CancellationException) { throw e } catch (e: Exception) { error = ctx.getString(R.string.err_server_unreachable, e.message ?: e.javaClass.simpleName) }
         }
     }
     val list = artists
@@ -406,7 +411,8 @@ fun ArtistsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
 fun SearchScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     val api = vm.api
     val server by vm.server.collectAsState()
-    if (api == null && server != Server.Offline) { ErrorBox("Aucun serveur configuré.") { vm.push(Detail.Settings) }; return }
+    if (api == null && server != Server.Offline) { ErrorBox(stringResource(R.string.no_server)) { vm.push(Detail.Settings) }; return }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     var query by rememberSaveable { mutableStateOf("") }
     var result by remember { mutableStateOf<SearchResult?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -418,42 +424,42 @@ fun SearchScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
         delay(150) // debounce: restarted at every keystroke
         try { result = api.search(query.trim()).also { vm.remember(it.albums) }; error = null }
         catch (e: CancellationException) { throw e }
-        catch (e: Exception) { error = "Recherche impossible (${e.message})" }
+        catch (e: Exception) { error = ctx.getString(R.string.err_search, e.message ?: e.javaClass.simpleName) }
     }
 
     Column(modifier.fillMaxSize()) {
         OutlinedTextField(
             value = query, onValueChange = { query = it }, singleLine = true,
-            placeholder = { Text(if (server == Server.Offline) "Dans les albums téléchargés" else "Titre, album ou artiste") },
+            placeholder = { Text(stringResource(if (server == Server.Offline) R.string.search_in_downloaded else R.string.search_hint)) },
             leadingIcon = { Icon(Icons.Default.Search, null) },
             modifier = Modifier.fillMaxWidth().padding(12.dp),
         )
         val r = result
         when {
             error != null -> Text(error!!, Modifier.padding(16.dp))
-            r == null -> Text("Tape quelques lettres : la recherche ignore les accents.", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            r.albums.isEmpty() && r.artists.isEmpty() && r.tracks.isEmpty() -> Text("Aucun résultat.", Modifier.padding(16.dp))
+            r == null -> Text(stringResource(R.string.search_tip), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            r.albums.isEmpty() && r.artists.isEmpty() && r.tracks.isEmpty() -> Text(stringResource(R.string.no_results), Modifier.padding(16.dp))
             else -> LazyColumn(Modifier.fillMaxSize()) {
-                if (r.fuzzy) item { Text("Résultats approchants", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (r.fuzzy) item { Text(stringResource(R.string.fuzzy_results), Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (r.artists.isNotEmpty()) {
-                    item { SectionTitle("Artistes") }
+                    item { SectionTitle(stringResource(R.string.tab_artists)) }
                     items(r.artists, key = { "ar${it.name}" }) { a ->
                         ListItem(modifier = Modifier.clickable { vm.push(Detail.ArtistPage(a.name)) },
                             headlineContent = { Text(a.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            trailingContent = { Text("${a.albumCount} albums", color = MaterialTheme.colorScheme.onSurfaceVariant) })
+                            trailingContent = { Text(pluralStringResource(R.plurals.n_albums, a.albumCount, a.albumCount), color = MaterialTheme.colorScheme.onSurfaceVariant) })
                     }
                 }
                 if (r.albums.isNotEmpty()) {
-                    item { SectionTitle("Albums") }
+                    item { SectionTitle(stringResource(R.string.tab_albums)) }
                     items(r.albums, key = { "al${it.id}" }) { a ->
                         ListItem(modifier = Modifier.clickable { vm.push(Detail.AlbumPage(a.id, a.name)) },
                             leadingContent = { Cover(api, a.id, a.hasCover, 64, Modifier.size(52.dp)) },
                             headlineContent = { Text(a.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            supportingContent = { Text(a.artistLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                            supportingContent = { Text(a.artistText(), maxLines = 1, overflow = TextOverflow.Ellipsis) })
                     }
                 }
                 if (r.tracks.isNotEmpty()) {
-                    item { SectionTitle("Titres") }
+                    item { SectionTitle(stringResource(R.string.section_tracks)) }
                     items(r.tracks, key = { "tr${it.id}" }) { t ->
                         ListItem(modifier = Modifier.clickable { vm.playTrack(t) },
                             leadingContent = { Cover(api, t.albumId, vm.hasCover(t.albumId), 64, Modifier.size(52.dp)) },
@@ -479,43 +485,44 @@ fun SettingsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     var text by remember { mutableStateOf(vm.address ?: "") }
     var health by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     // The text field follows the address when discovery finds one.
     LaunchedEffect(vm.address) { vm.address?.let { text = it } }
 
     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Serveur de musique", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.music_server), style = MaterialTheme.typography.titleMedium)
         Button(onClick = { vm.discover() }, enabled = !vm.searching) {
             if (vm.searching) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)) }
-            Text(if (vm.searching) "Recherche en cours…" else "Rechercher automatiquement")
+            Text(stringResource(if (vm.searching) R.string.searching else R.string.search_auto))
         }
         vm.discoveryNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-        OutlinedButton(onClick = { vm.push(Detail.Downloads) }) { Text("Albums téléchargés") }
+        OutlinedButton(onClick = { vm.push(Detail.Downloads) }) { Text(stringResource(R.string.downloaded_albums)) }
         HorizontalDivider()
         val output by vm.output.collectAsState()
-        Text("Écouter sur", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.listen_on), style = MaterialTheme.typography.titleMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(output == Output.Denon, { vm.chooseOutput(Output.Denon) }, label = { Text("Le Denon") })
-            FilterChip(output == Output.Phone, { vm.chooseOutput(Output.Phone) }, label = { Text("Le téléphone") })
+            FilterChip(output == Output.Denon, { vm.chooseOutput(Output.Denon) }, label = { Text(stringResource(R.string.output_denon)) })
+            FilterChip(output == Output.Phone, { vm.chooseOutput(Output.Phone) }, label = { Text(stringResource(R.string.output_phone)) })
         }
         HorizontalDivider()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Suggestions à la suite", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.suggestions_follow), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Quand tu lances un album, quelques titres proches de ta bibliothèque s'ajoutent à la suite dans la file, repérés par une étoile : passe ceux que tu ne veux pas entendre. D'autres s'ajoutent quand la file arrive à sa fin, et par lots de 10 quand tu fais défiler la file vers le bas. Avec l'ampli, c'est le serveur qui les ajoute : la musique continue même si l'appli est fermée, et le réglage vaut pour tous les téléphones. Le serveur peut interroger Last.fm si une clé y est configurée : il lui envoie alors l'artiste et le titre.",
+                    stringResource(R.string.suggestions_help),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Switch(vm.autoSimilar, { vm.updateAutoSimilar(it) })
         }
         HorizontalDivider()
-        OutlinedTextField(text, { text = it }, label = { Text("Adresse (ex. http://192.168.1.50:8765)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(text, { text = it }, label = { Text(stringResource(R.string.address_label)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = {
                 vm.saveAddress(text)
-                health = "Test…"
-                scope.launch { health = if (vm.api?.health() == true) "Connecté au serveur." else "Le serveur ne répond pas à cette adresse." }
-            }) { Text("Enregistrer et tester") }
+                health = ctx.getString(R.string.testing)
+                scope.launch { health = ctx.getString(if (vm.api?.health() == true) R.string.connected else R.string.no_answer) }
+            }) { Text(stringResource(R.string.save_and_test)) }
         }
         health?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     }
@@ -524,9 +531,19 @@ fun SettingsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
 // ---------------------------------------------------------------------------------------------
 // Downloads
 
-private fun megabytes(bytes: Long) = "%.0f Mo".format(bytes / 1_048_576.0)
+/** "3 albums · 1 playlist · 420 MB · 12 GB free", the line at the top of the download screens. */
+@Composable
+private fun storageSummary(albums: Int, playlists: Int, free: Long, labelled: Boolean): String {
+    val used = fileSize(LocalLibrary.totalBytes())
+    return listOf(
+        pluralStringResource(R.plurals.n_albums, albums, albums),
+        pluralStringResource(R.plurals.n_playlists, playlists, playlists),
+        if (labelled) stringResource(R.string.size_on_phone, used) else used,
+        stringResource(R.string.free_space, fileSize(free)),
+    ).joinToString(" · ")
+}
 
-/** Download / progress / delete, under the "Tout lire" button of an album. */
+/** Download / progress / delete, under the "Play all" button of an album. */
 @Composable
 private fun DownloadControl(vm: AppViewModel, d: AlbumDetail) {
     val albums by LocalLibrary.albums.collectAsState()
@@ -538,26 +555,26 @@ private fun DownloadControl(vm: AppViewModel, d: AlbumDetail) {
     Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         when {
             p != null && p.error == null -> {
-                Text(if (p.queued) "En attente…" else "Téléchargement ${p.done}/${p.total}", style = MaterialTheme.typography.bodyMedium)
+                Text(if (p.queued) stringResource(R.string.dl_waiting) else stringResource(R.string.dl_progress, p.done, p.total), style = MaterialTheme.typography.bodyMedium)
                 LinearProgressIndicator(progress = { if (p.total > 0) p.done.toFloat() / p.total else 0f }, modifier = Modifier.fillMaxWidth(0.7f).padding(vertical = 6.dp))
-                TextButton(onClick = { vm.cancelDownload(d.album.id) }) { Text("Annuler") }
+                TextButton(onClick = { vm.cancelDownload(d.album.id) }) { Text(stringResource(R.string.cancel)) }
             }
             mine?.complete == true -> Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.DownloadDone, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(6.dp))
-                Text("Sur le téléphone · ${megabytes(mine.bytes)}", style = MaterialTheme.typography.bodyMedium)
-                TextButton(onClick = { confirmDelete = true }) { Text("Supprimer") }
+                Text(stringResource(R.string.on_phone_size, fileSize(mine.bytes)), style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.delete)) }
             }
             else -> {
-                if (p?.error != null) Text("Interrompu : ${p.error}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                if (mine != null) Text("Incomplet : ${mine.tracksOnPhone}/${d.tracks.size} titres", style = MaterialTheme.typography.bodySmall)
+                if (p?.error != null) Text(stringResource(R.string.interrupted_why, p.error), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                if (mine != null) Text(stringResource(R.string.dl_incomplete_n, mine.tracksOnPhone, d.tracks.size), style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(onClick = { vm.downloadAlbum(d.album.id) }) {
                         Icon(Icons.Default.Download, null)
                         Spacer(Modifier.width(6.dp))
-                        Text(if (mine != null) "Reprendre" else "Télécharger")
+                        Text(stringResource(if (mine != null) R.string.resume else R.string.download))
                     }
-                    if (mine != null) TextButton(onClick = { confirmDelete = true }) { Text("Supprimer") }
+                    if (mine != null) TextButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.delete)) }
                 }
             }
         }
@@ -565,10 +582,10 @@ private fun DownloadControl(vm: AppViewModel, d: AlbumDetail) {
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Supprimer du téléphone ?") },
-            text = { Text("« ${d.album.name} » ne sera plus disponible hors connexion. L'album reste sur le serveur.") },
-            confirmButton = { TextButton(onClick = { vm.deleteDownload(d.album.id); confirmDelete = false }) { Text("Supprimer") } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Garder") } },
+            title = { Text(stringResource(R.string.delete_title)) },
+            text = { Text(stringResource(R.string.delete_album_text, d.album.name)) },
+            confirmButton = { TextButton(onClick = { vm.deleteDownload(d.album.id); confirmDelete = false }) { Text(stringResource(R.string.delete)) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.keep)) } },
         )
     }
 }
@@ -586,11 +603,11 @@ fun DownloadsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
 
     Column(modifier.fillMaxSize()) {
         Text(
-            "${albums.size} album(s) · ${playlists.size} playlist(s) · ${megabytes(LocalLibrary.totalBytes())} sur le téléphone · ${"%.1f".format(free / 1_073_741_824.0)} Go libres",
+            storageSummary(albums.size, playlists.size, free, true),
             style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp),
         )
         if (albums.isEmpty() && playlists.isEmpty()) {
-            Text("Rien de téléchargé. Ouvre un album et appuie sur « Télécharger », ou télécharge la file depuis le lecteur.", Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.nothing_downloaded), Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         LazyColumn(Modifier.fillMaxSize()) {
             items(playlists, key = { "playlist-${it.id}" }) { d ->
@@ -600,11 +617,11 @@ fun DownloadsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                     headlineContent = { Text(d.playlist.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     supportingContent = {
                         Text(
-                            "playlist · ${d.playlist.tracks.size} titres · " + if (d.complete) megabytes(d.bytes) else "incomplète ${d.tracksOnPhone}/${d.playlist.tracks.size}",
+                            stringResource(R.string.playlist_word) + " · " + trackCount(d.playlist.tracks.size) + " · " + if (d.complete) fileSize(d.bytes) else stringResource(R.string.pl_incomplete_n, d.tracksOnPhone, d.playlist.tracks.size),
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     },
-                    trailingContent = { IconButton(onClick = { playlistToDelete = d }) { Icon(Icons.Default.Delete, "Supprimer") } },
+                    trailingContent = { IconButton(onClick = { playlistToDelete = d }) { Icon(Icons.Default.Delete, stringResource(R.string.delete)) } },
                 )
             }
             items(albums, key = { it.id }) { a ->
@@ -615,13 +632,13 @@ fun DownloadsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                     headlineContent = { Text(a.detail.album.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     supportingContent = {
                         Text(
-                            listOfNotNull(a.detail.album.artistLabel.ifEmpty { null },
-                                if (a.complete) megabytes(a.bytes) else "incomplet ${a.tracksOnPhone}/${a.detail.tracks.size}",
-                                p?.let { "télécharge…" }).joinToString(" · "),
+                            listOfNotNull(a.detail.album.artistText().ifEmpty { null },
+                                if (a.complete) fileSize(a.bytes) else stringResource(R.string.dl_incomplete_n, a.tracksOnPhone, a.detail.tracks.size),
+                                p?.let { stringResource(R.string.downloading_lower) }).joinToString(" · "),
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     },
-                    trailingContent = { IconButton(onClick = { toDelete = a }) { Icon(Icons.Default.Delete, "Supprimer") } },
+                    trailingContent = { IconButton(onClick = { toDelete = a }) { Icon(Icons.Default.Delete, stringResource(R.string.delete)) } },
                 )
             }
         }
@@ -629,19 +646,19 @@ fun DownloadsScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     playlistToDelete?.let { d ->
         AlertDialog(
             onDismissRequest = { playlistToDelete = null },
-            title = { Text("Supprimer du téléphone ?") },
-            text = { Text("« ${d.playlist.name} » (${megabytes(d.bytes)}) ne sera plus disponible hors connexion.") },
-            confirmButton = { TextButton(onClick = { vm.deletePlaylist(d.id); playlistToDelete = null }) { Text("Supprimer") } },
-            dismissButton = { TextButton(onClick = { playlistToDelete = null }) { Text("Garder") } },
+            title = { Text(stringResource(R.string.delete_title)) },
+            text = { Text(stringResource(R.string.delete_item_text, d.playlist.name, fileSize(d.bytes))) },
+            confirmButton = { TextButton(onClick = { vm.deletePlaylist(d.id); playlistToDelete = null }) { Text(stringResource(R.string.delete)) } },
+            dismissButton = { TextButton(onClick = { playlistToDelete = null }) { Text(stringResource(R.string.keep)) } },
         )
     }
     toDelete?.let { a ->
         AlertDialog(
             onDismissRequest = { toDelete = null },
-            title = { Text("Supprimer du téléphone ?") },
-            text = { Text("« ${a.detail.album.name} » (${megabytes(a.bytes)}) ne sera plus disponible hors connexion.") },
-            confirmButton = { TextButton(onClick = { vm.deleteDownload(a.id); toDelete = null }) { Text("Supprimer") } },
-            dismissButton = { TextButton(onClick = { toDelete = null }) { Text("Garder") } },
+            title = { Text(stringResource(R.string.delete_title)) },
+            text = { Text(stringResource(R.string.delete_item_text, a.detail.album.name, fileSize(a.bytes))) },
+            confirmButton = { TextButton(onClick = { vm.deleteDownload(a.id); toDelete = null }) { Text(stringResource(R.string.delete)) } },
+            dismissButton = { TextButton(onClick = { toDelete = null }) { Text(stringResource(R.string.keep)) } },
         )
     }
 }

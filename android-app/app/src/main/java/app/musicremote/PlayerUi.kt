@@ -1,5 +1,6 @@
 package app.musicremote
 
+import androidx.compose.ui.res.stringResource
 import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -58,8 +59,6 @@ fun rememberPositionMs(ui: PlayerUi): Long {
     return if (ui.snap.durationMs > 0) pos.coerceIn(0, ui.snap.durationMs) else pos
 }
 
-private fun title(s: PlayerSnapshot) = s.current?.title ?: "Aucun titre"
-
 /** Compact bar above the tab bar: cover, title, play/pause, next. Tap to open the full player. */
 @Composable
 fun MiniPlayer(vm: AppViewModel, modifier: Modifier = Modifier) {
@@ -77,21 +76,21 @@ fun MiniPlayer(vm: AppViewModel, modifier: Modifier = Modifier) {
                     Text(cur.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
                     Text(
                         when {
-                            ui.snap.status == "loading" -> "Chargement…"
-                            !ui.live -> "Connexion au serveur…"
-                            else -> listOfNotNull(if (vm.output.collectAsState().value == Output.Phone) "Téléphone" else null, cur.artist).joinToString(" · ")
+                            ui.snap.status == "loading" -> stringResource(R.string.loading)
+                            !ui.live -> stringResource(R.string.connecting)
+                            else -> listOfNotNull(if (vm.output.collectAsState().value == Output.Phone) stringResource(R.string.output_phone) else null, cur.artist).joinToString(" · ")
                         },
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 val canSeek = ui.snap.status == "playing" || ui.snap.status == "paused"
-                IconButton(onClick = { vm.seekBy(-10_000) }, enabled = canSeek) { Icon(Icons.Default.Replay10, "Reculer de 10 secondes") }
+                IconButton(onClick = { vm.seekBy(-10_000) }, enabled = canSeek) { Icon(Icons.Default.Replay10, stringResource(R.string.skip_back_10)) }
                 IconButton(onClick = { if (playing) vm.pause() else vm.resume() }) {
-                    Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause" else "Lecture")
+                    Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(if (playing) R.string.pause else R.string.play))
                 }
-                IconButton(onClick = { vm.seekBy(10_000) }, enabled = canSeek) { Icon(Icons.Default.Forward10, "Avancer de 10 secondes") }
-                IconButton(onClick = { vm.next() }) { Icon(Icons.Default.SkipNext, "Suivant") }
+                IconButton(onClick = { vm.seekBy(10_000) }, enabled = canSeek) { Icon(Icons.Default.Forward10, stringResource(R.string.skip_forward_10)) }
+                IconButton(onClick = { vm.next() }) { Icon(Icons.Default.SkipNext, stringResource(R.string.next)) }
             }
         }
     }
@@ -126,7 +125,7 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
             Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 if (cur != null) Cover(vm.api, cur.albumId, vm.hasCover(cur.albumId), 600, Modifier.fillMaxWidth(0.85f))
                 Spacer(Modifier.height(16.dp))
-                Text(title(s), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+                Text(s.current?.title ?: stringResource(R.string.no_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
                 val artist = cur?.artist.orEmpty()
                 Text(artist, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 if (cur != null && artist.isNotBlank()) {
@@ -134,15 +133,15 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                     TextButton(onClick = { vm.openArtist(cur.albumId, artist) }) {
                         Icon(Icons.Default.Album, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Tous les albums de $artist", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(stringResource(R.string.all_albums_of, artist), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
                     when {
-                        s.status == "loading" -> "Chargement…"
-                        s.status == "stopped" -> "Arrêté"
-                        s.status == "paused" -> "En pause"
+                        s.status == "loading" -> stringResource(R.string.loading)
+                        s.status == "stopped" -> stringResource(R.string.status_stopped)
+                        s.status == "paused" -> stringResource(R.string.status_paused)
                         else -> " "
                     },
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -151,7 +150,7 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
                         Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(if (!ui.live) "Connexion au serveur perdue, reconnexion…" else "Le Denon est injoignable.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(if (!ui.live) R.string.connection_lost else R.string.denon_unreachable), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 s.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp)) }
@@ -166,19 +165,19 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                         shape = SegmentedButtonDefaults.itemShape(0, 2),
                         enabled = server == Server.Online || output == Output.Denon,
                         icon = { SegmentedButtonDefaults.Icon(output == Output.Denon) { Icon(Icons.Default.Speaker, null, Modifier.size(18.dp)) } },
-                    ) { Text("Denon") }
+                    ) { Text(stringResource(R.string.output_denon)) }
                     SegmentedButton(
                         selected = output == Output.Phone, onClick = { vm.chooseOutput(Output.Phone) },
                         shape = SegmentedButtonDefaults.itemShape(1, 2),
                         icon = { SegmentedButtonDefaults.Icon(output == Output.Phone) { Icon(Icons.Default.Smartphone, null, Modifier.size(18.dp)) } },
-                    ) { Text("Téléphone") }
+                    ) { Text(stringResource(R.string.output_phone)) }
                 }
 
                 if (cur != null) {
                     FilledTonalButton(onClick = { vm.suggestSimilar() }, enabled = !vm.suggesting && server == Server.Online, modifier = Modifier.padding(top = 8.dp)) {
                         if (vm.suggesting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Même style")
+                        Text(stringResource(R.string.same_style))
                     }
                 }
 
@@ -208,19 +207,19 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
 
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    IconButton(onClick = { vm.previous() }, modifier = Modifier.size(56.dp)) { Icon(Icons.Default.SkipPrevious, "Précédent", Modifier.size(34.dp)) }
+                    IconButton(onClick = { vm.previous() }, modifier = Modifier.size(56.dp)) { Icon(Icons.Default.SkipPrevious, stringResource(R.string.previous), Modifier.size(34.dp)) }
                     FilledIconButton(onClick = { if (playing) vm.pause() else vm.resume() }, modifier = Modifier.size(72.dp)) {
-                        Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause" else "Lecture", Modifier.size(40.dp))
+                        Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, stringResource(if (playing) R.string.pause else R.string.play), Modifier.size(40.dp))
                     }
-                    IconButton(onClick = { vm.next() }, modifier = Modifier.size(56.dp)) { Icon(Icons.Default.SkipNext, "Suivant", Modifier.size(34.dp)) }
-                    IconButton(onClick = { vm.stop() }) { Icon(Icons.Default.Stop, "Arrêter") }
+                    IconButton(onClick = { vm.next() }, modifier = Modifier.size(56.dp)) { Icon(Icons.Default.SkipNext, stringResource(R.string.next), Modifier.size(34.dp)) }
+                    IconButton(onClick = { vm.stop() }) { Icon(Icons.Default.Stop, stringResource(R.string.stop)) }
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { vm.seekBy(-30_000) }, enabled = canSeek) { Icon(Icons.Default.Replay30, "Reculer de 30 secondes") }
-                    IconButton(onClick = { vm.seekBy(-10_000) }, enabled = canSeek) { Icon(Icons.Default.Replay10, "Reculer de 10 secondes") }
-                    IconButton(onClick = { vm.seekBy(10_000) }, enabled = canSeek) { Icon(Icons.Default.Forward10, "Avancer de 10 secondes") }
-                    IconButton(onClick = { vm.seekBy(30_000) }, enabled = canSeek) { Icon(Icons.Default.Forward30, "Avancer de 30 secondes") }
+                    IconButton(onClick = { vm.seekBy(-30_000) }, enabled = canSeek) { Icon(Icons.Default.Replay30, stringResource(R.string.skip_back_30)) }
+                    IconButton(onClick = { vm.seekBy(-10_000) }, enabled = canSeek) { Icon(Icons.Default.Replay10, stringResource(R.string.skip_back_10)) }
+                    IconButton(onClick = { vm.seekBy(10_000) }, enabled = canSeek) { Icon(Icons.Default.Forward10, stringResource(R.string.skip_forward_10)) }
+                    IconButton(onClick = { vm.seekBy(30_000) }, enabled = canSeek) { Icon(Icons.Default.Forward30, stringResource(R.string.skip_forward_30)) }
                 }
 
                 VolumeSlider(vm, s.volume, s.mute)
@@ -229,13 +228,13 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
         if (s.queue.size > 1) {
             item {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("File d'attente", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                    Text(stringResource(R.string.queue), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
                     // Keep the whole queue on the phone (needs the server to fetch the files).
                     if (server == Server.Online) {
                         TextButton(onClick = { savePlaylist = true }) {
                             Icon(Icons.Default.Download, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Télécharger")
+                            Text(stringResource(R.string.download))
                         }
                     }
                 }
@@ -247,7 +246,7 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                 val why = q.reason ?: vm.suggested[q.trackId]
                 Column {
                     if (i == firstSuggested) {
-                        Text("Suggestions", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 2.dp))
+                        Text(stringResource(R.string.suggestions), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 2.dp))
                     }
                     // Swipe a track left or right to take it out of the queue (not the one being played).
                     val dismiss = rememberSwipeToDismissBoxState(confirmValueChange = { v ->
@@ -261,13 +260,13 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                             Box(
                                 Modifier.fillMaxSize().background(MaterialTheme.colorScheme.errorContainer).padding(horizontal = 20.dp),
                                 contentAlignment = if (dismiss.dismissDirection == SwipeToDismissBoxValue.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd,
-                            ) { Icon(Icons.Default.Delete, "Retirer de la file", tint = MaterialTheme.colorScheme.onErrorContainer) }
+                            ) { Icon(Icons.Default.Delete, stringResource(R.string.remove_from_queue), tint = MaterialTheme.colorScheme.onErrorContainer) }
                         },
                     ) {
                     ListItem(
                         modifier = Modifier.clickable { vm.jump(i) },
                         leadingContent = {
-                            if (why != null) Icon(Icons.Default.AutoAwesome, "Suggestion", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                            if (why != null) Icon(Icons.Default.AutoAwesome, stringResource(R.string.suggestion), Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
                             else Text("${i + 1}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         },
                         headlineContent = {
@@ -275,7 +274,7 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                                 color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                 fontWeight = if (current) FontWeight.SemiBold else FontWeight.Normal)
                         },
-                        supportingContent = listOfNotNull(q.artist, why?.let(::suggestionLabel)).takeIf { it.isNotEmpty() }?.let { parts ->
+                        supportingContent = listOfNotNull(q.artist, why?.let { suggestionLabel(it) }).takeIf { it.isNotEmpty() }?.let { parts ->
                             { Text(parts.joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                         },
                         trailingContent = { Text(formatMs(q.durationMs), color = MaterialTheme.colorScheme.onSurfaceVariant) },
@@ -288,7 +287,7 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                     Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(12.dp))
-                        Text("Recherche de suggestions…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.finding_suggestions), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -297,11 +296,12 @@ fun NowPlayingScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
 }
 
 /** Why the server suggested a track (`reason` of /recommendations). */
+@Composable
 private fun suggestionLabel(reason: String) = when (reason) {
     "lastfm_track", "lastfm_artist" -> "Last.fm"
-    "same_genre" -> "même genre"
-    "same_artist" -> "même artiste"
-    else -> "suggestion"
+    "same_genre" -> stringResource(R.string.reason_same_genre)
+    "same_artist" -> stringResource(R.string.reason_same_artist)
+    else -> stringResource(R.string.reason_other)
 }
 
 @Composable
@@ -312,14 +312,14 @@ private fun VolumeSlider(vm: AppViewModel, volume: Int?, muted: Boolean) {
     LaunchedEffect(volume) { if (!dragging && volume != null) value = volume.toFloat() }
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
         IconButton(onClick = { vm.setMute(!muted) }) {
-            Icon(if (muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp, if (muted) "Rétablir le son" else "Couper le son")
+            Icon(if (muted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp, stringResource(if (muted) R.string.unmute else R.string.mute))
         }
         Slider(
             value = value, onValueChange = { dragging = true; value = it },
             onValueChangeFinished = { dragging = false; vm.setVolume(value.toInt()) },
             valueRange = 0f..100f, enabled = volume != null && !muted, modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
         )
-        Text(if (muted) "muet" else "${value.toInt()}", Modifier.width(44.dp), textAlign = TextAlign.End)
+        Text(if (muted) stringResource(R.string.muted_short) else "${value.toInt()}", Modifier.width(44.dp), textAlign = TextAlign.End)
     }
 }
 
@@ -335,30 +335,30 @@ fun VolumeDialog(vm: AppViewModel, onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } },
-        title = { Text(if (vm.output.collectAsState().value == Output.Phone) "Volume du téléphone" else "Volume du Denon") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
+        title = { Text(stringResource(if (vm.output.collectAsState().value == Output.Phone) R.string.volume_phone else R.string.volume_denon)) },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Text(if (volume == null) "—" else if (ui.snap.mute) "Son coupé" else "${value.toInt()}", style = MaterialTheme.typography.displaySmall)
+                Text(if (volume == null) "—" else if (ui.snap.mute) stringResource(R.string.muted) else "${value.toInt()}", style = MaterialTheme.typography.displaySmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilledTonalIconButton(onClick = { send(value.toInt() - 1) }, enabled = volume != null) { Icon(Icons.Default.Remove, "Moins fort") }
+                    FilledTonalIconButton(onClick = { send(value.toInt() - 1) }, enabled = volume != null) { Icon(Icons.Default.Remove, stringResource(R.string.quieter)) }
                     Slider(
                         value = value, onValueChange = { dragging = true; value = it },
                         onValueChangeFinished = { dragging = false; vm.setVolume(value.toInt()) },
                         valueRange = 0f..100f, enabled = volume != null, modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                     )
-                    FilledTonalIconButton(onClick = { send(value.toInt() + 1) }, enabled = volume != null) { Icon(Icons.Default.Add, "Plus fort") }
+                    FilledTonalIconButton(onClick = { send(value.toInt() + 1) }, enabled = volume != null) { Icon(Icons.Default.Add, stringResource(R.string.louder)) }
                 }
                 Spacer(Modifier.height(8.dp))
                 val muted = ui.snap.mute
                 FilledTonalButton(onClick = { vm.setMute(!muted) }, enabled = volume != null) {
                     Icon(if (muted) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff, null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (muted) "Rétablir le son" else "Couper le son")
+                    Text(stringResource(if (muted) R.string.unmute else R.string.mute))
                 }
                 if (!ui.live || !ui.snap.heosConnected) {
                     Text(
-                        if (!ui.live) "Connexion au serveur…" else "Le Denon est injoignable.",
+                        stringResource(if (!ui.live) R.string.connecting else R.string.denon_unreachable),
                         color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
                     )
                 }

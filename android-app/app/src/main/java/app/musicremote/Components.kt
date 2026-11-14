@@ -1,5 +1,7 @@
 package app.musicremote
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -75,11 +77,22 @@ fun TopBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable Row
     TopAppBar(
         title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         navigationIcon = {
-            if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Retour") }
+            if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) }
         },
         actions = actions,
     )
 }
+
+/** An album's artist as shown: "Various artists" (translated) for a compilation. */
+@Composable
+fun Album.artistText(): String = if (variousArtists) stringResource(R.string.various_artists) else artist.orEmpty()
+
+/** A size in the unit of the user's locale (kB, MB, GB). */
+@Composable
+fun fileSize(bytes: Long): String = android.text.format.Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, bytes)
+
+@Composable
+fun trackCount(n: Int): String = pluralStringResource(R.plurals.n_tracks, n, n)
 
 /** Shown on every screen while the server cannot be reached. */
 @Composable
@@ -89,11 +102,11 @@ fun OfflineBanner(onRetry: () -> Unit) {
             Icon(Icons.Default.CloudOff, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
             Spacer(Modifier.width(10.dp))
             Text(
-                "Hors connexion : seuls les albums téléchargés sont disponibles",
+                stringResource(R.string.offline_banner),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onRetry) { Text("Réessayer") }
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
         }
     }
 }

@@ -128,6 +128,10 @@ Icône adaptative en vecteurs (`res/drawable/ic_launcher_*.xml`, `res/mipmap-any
 
 Coil 3 (`AsyncImage`) charge `GET /cover/{id}?size=` avec 64 px (listes), 300 px (grille), 600 px (page album, lecteur). **On ne demande jamais une pochette quand `has_cover` est faux** : le serveur répondrait `404`. Le ViewModel retient `has_cover` de chaque album vu (`remember`) pour que le mini-lecteur sache si l'album en cours en a une ; inconnu = on tente, avec l'icône de note comme repli en cas d'erreur.
 
+## Langues
+
+Tous les textes sont des ressources : `res/values/strings.xml` est en anglais (repli pour toute autre langue), `values-fr`, `-de`, `-it`, `-es`, `-pt` (+ `-pt-rBR` pour les différences), `-nl`, `-ca`, `-sv`, `-da`, `-nb`, `-fi`, `-pl` sont les traductions. L'appli suit la langue du téléphone ; `res/xml/locales_config.xml` (`android:localeConfig`) les liste pour le réglage de langue par appli d'Android 13+, et `androidResources.localeFilters` empêche les bibliothèques d'ajouter des textes dans d'autres langues (l'appli serait à moitié traduite pour ces utilisateurs). Compose utilise `stringResource` / `pluralStringResource` ; le view model et le worker de téléchargement utilisent `getString`. Ce qui n'est pas traduit volontairement : les valeurs de protocole (`status`, les raisons comme `same_genre` sont transformées en libellé à l'affichage), le nom du produit, la marque `Denon`, et les messages d'erreur venus du serveur ou du système. Les tailles passent par `Formatter.formatShortFileSize` ; la date du nom automatique d'une playlist par `DateFormat.getBestDateTimePattern`. Un échec que le code doit reconnaître est un type (`NotEnoughSpace`), jamais un message.
+
 ## Listes
 
 Grille d'albums : 60 albums par page, page suivante demandée quand l'un des 12 derniers éléments devient visible. Le tri « au hasard » n'a pas de pagination (bouton pour mélanger). Recherche : 150 ms d'attente après la dernière frappe, un appel `GET /search` ensuite (le serveur répond en 10 à 17 ms).

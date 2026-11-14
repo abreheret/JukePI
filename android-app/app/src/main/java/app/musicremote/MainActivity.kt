@@ -1,5 +1,6 @@
 package app.musicremote
 
+import androidx.compose.ui.res.stringResource
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -74,16 +75,16 @@ private fun PermissionGate(content: @Composable () -> Unit) {
 
     if (granted) { content(); return }
     Column(Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Accès au réseau local", style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.permission_title), style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(12.dp))
-        Text("Android 17 demande ton accord pour que l'appli joigne ton serveur de musique sur le réseau de la maison.", style = MaterialTheme.typography.bodyLarge)
+        Text(stringResource(R.string.permission_body), style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.height(20.dp))
-        Button(onClick = { launcher.launch(LOCAL_NETWORK_PERMISSION) }) { Text("Autoriser") }
+        Button(onClick = { launcher.launch(LOCAL_NETWORK_PERMISSION) }) { Text(stringResource(R.string.allow)) }
         if (asked) {
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = {
                 ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}")))
-            }) { Text("Ouvrir les réglages de l'application") }
+            }) { Text(stringResource(R.string.open_app_settings)) }
         }
     }
 }
@@ -137,7 +138,7 @@ private fun Root(vm: AppViewModel) {
 
     val detail = vm.details.lastOrNull()
     val volumeAction: @Composable RowScope.() -> Unit = {
-        IconButton(onClick = { showVolume = true }) { Icon(Icons.AutoMirrored.Filled.VolumeUp, "Volume") }
+        IconButton(onClick = { showVolume = true }) { Icon(Icons.AutoMirrored.Filled.VolumeUp, stringResource(R.string.volume)) }
     }
     BackHandler(enabled = detail != null) { vm.pop() }
 
@@ -146,17 +147,17 @@ private fun Root(vm: AppViewModel) {
         topBar = {
             when (detail) {
                 null -> TopBar(
-                    when (vm.tab) { Tab.Albums -> "Albums"; Tab.Downloaded -> "Sur le téléphone"; Tab.Artists -> "Artistes"; Tab.Search -> "Recherche" },
+                    stringResource(when (vm.tab) { Tab.Albums -> R.string.tab_albums; Tab.Downloaded -> R.string.title_on_phone; Tab.Artists -> R.string.tab_artists; Tab.Search -> R.string.tab_search }),
                     actions = {
                         volumeAction()
-                        IconButton(onClick = { vm.push(Detail.Settings) }) { Icon(Icons.Default.Settings, "Serveur") }
+                        IconButton(onClick = { vm.push(Detail.Settings) }) { Icon(Icons.Default.Settings, stringResource(R.string.title_server)) }
                     },
                 )
                 is Detail.AlbumPage -> TopBar(detail.title, onBack = vm::pop, actions = volumeAction)
                 is Detail.ArtistPage -> TopBar(detail.name, onBack = vm::pop, actions = volumeAction)
-                Detail.NowPlaying -> TopBar("Lecture en cours", onBack = vm::pop, actions = volumeAction)
-                Detail.Settings -> TopBar("Serveur", onBack = vm::pop)
-                Detail.Downloads -> TopBar("Téléchargements", onBack = vm::pop)
+                Detail.NowPlaying -> TopBar(stringResource(R.string.title_now_playing), onBack = vm::pop, actions = volumeAction)
+                Detail.Settings -> TopBar(stringResource(R.string.title_server), onBack = vm::pop)
+                Detail.Downloads -> TopBar(stringResource(R.string.title_downloads), onBack = vm::pop)
                 is Detail.PlaylistPage -> TopBar(detail.title, onBack = vm::pop, actions = volumeAction)
             }
         },
@@ -165,10 +166,10 @@ private fun Root(vm: AppViewModel) {
                 if (detail != Detail.NowPlaying && detail != Detail.Settings && detail != Detail.Downloads) MiniPlayer(vm)
                 if (detail == null) {
                     NavigationBar {
-                        NavigationBarItem(vm.tab == Tab.Albums, { vm.tab = Tab.Albums }, { Icon(Icons.Default.Album, null) }, label = { Text("Albums") })
-                        NavigationBarItem(vm.tab == Tab.Downloaded, { vm.tab = Tab.Downloaded }, { Icon(Icons.Default.DownloadForOffline, null) }, label = { Text("Téléchargés") })
-                        NavigationBarItem(vm.tab == Tab.Artists, { vm.tab = Tab.Artists }, { Icon(Icons.Default.Person, null) }, label = { Text("Artistes") })
-                        NavigationBarItem(vm.tab == Tab.Search, { vm.tab = Tab.Search }, { Icon(Icons.Default.Search, null) }, label = { Text("Recherche") })
+                        NavigationBarItem(vm.tab == Tab.Albums, { vm.tab = Tab.Albums }, { Icon(Icons.Default.Album, null) }, label = { Text(stringResource(R.string.tab_albums)) })
+                        NavigationBarItem(vm.tab == Tab.Downloaded, { vm.tab = Tab.Downloaded }, { Icon(Icons.Default.DownloadForOffline, null) }, label = { Text(stringResource(R.string.tab_downloaded)) })
+                        NavigationBarItem(vm.tab == Tab.Artists, { vm.tab = Tab.Artists }, { Icon(Icons.Default.Person, null) }, label = { Text(stringResource(R.string.tab_artists)) })
+                        NavigationBarItem(vm.tab == Tab.Search, { vm.tab = Tab.Search }, { Icon(Icons.Default.Search, null) }, label = { Text(stringResource(R.string.tab_search)) })
                     }
                 }
             }
