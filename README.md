@@ -2,6 +2,8 @@
 
 🇫🇷 [Français](README.fr.md)
 
+<p align="center"><img src="docs/icon.svg" alt="JukePI icon: a J-shaped music note in front of a raspberry" width="140"></p>
+
 [![Server](https://github.com/abreheret/JukePI/actions/workflows/server.yml/badge.svg)](https://github.com/abreheret/JukePI/actions/workflows/server.yml) [![Android](https://github.com/abreheret/JukePI/actions/workflows/android.yml/badge.svg)](https://github.com/abreheret/JukePI/actions/workflows/android.yml) [![Release](https://img.shields.io/github/v/release/abreheret/JukePI)](https://github.com/abreheret/JukePI/releases/latest) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Self-hosted music server for the Raspberry Pi, with an Android remote that drives a Denon HEOS amplifier or plays offline on the phone.**
