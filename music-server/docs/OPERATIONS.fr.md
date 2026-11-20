@@ -95,19 +95,23 @@ Après le premier déploiement qui apporte les pochettes, le scan résout tous l
 
 ## Albums téléchargés par un client torrent (facultatif)
 
-`deploy/torrent-albums/` copie dans la bibliothèque les albums MP3 terminés par qBittorrent, rangés comme le reste
-(`<Artiste>/<Album>/`), et lance un rescan :
+`deploy/torrent-albums/` copie dans la bibliothèque les albums MP3 et FLAC terminés par qBittorrent, rangés comme le
+reste (`<Artiste>/<Album>/`), et lance un rescan. Le serveur ne lit que le MP3 : les FLAC sont convertis en MP3 320k
+(`MP3_BITRATE`) avec leurs tags et leur pochette intégrée, les hi-res ré-échantillonnés à 48 kHz (2 conversions à la
+fois, `CONVERT_JOBS`, en basse priorité ; environ 2 s par minute de musique sur un Pi 4). Les FLAC restent dans les
+téléchargements.
 
 - `torrent-finished.sh`, réglé dans qBittorrent comme *Lancer un programme externe à la fin d'un torrent* :
   `/config/scripts/torrent-finished.sh "%F"` (chemins vus depuis le conteneur qBittorrent). Il ajoute seulement le
   chemin du torrent terminé à `finished-torrents.txt` dans le dossier de config de qBittorrent.
 - `import-torrent-albums.py` (installé en `/usr/local/bin/jukepi-import-torrent-albums`, demande `python3` et
-  `ffprobe`) lit les tags ID3 de chaque MP3 d'un torrent terminé et les regroupe par tag d'album (un torrent peut
+  `ffmpeg`) lit les tags de chaque MP3/FLAC d'un torrent terminé et les regroupe par tag d'album (un torrent peut
   contenir toute une discographie). Dossier artiste : le tag « artiste de l'album », sinon l'artiste de plus de la
   moitié des pistes (« feat. » ignoré), sinon `Various Artists`. Dossier album : le tag album. Sans tags, les deux
   viennent des noms de dossiers (`Artiste - Album (2020) [MP3]`, `2001 - Album` dans une discographie, `CD1`/`CD2`
-  gardés en un seul album). Seuls les MP3 et les pochettes sont copiés, sous-dossiers (CD1, CD2) conservés, noms
-  rendus compatibles NTFS/Windows.
+  gardés en un seul album). Seuls les fichiers de musique et les pochettes sont copiés, sous-dossiers (CD1, CD2)
+  conservés, noms rendus compatibles NTFS/Windows. Un album présent en MP3 et en FLAC garde ses MP3 ; une piste FLAC
+  impossible à convertir est sautée (notée au journal).
 - Un dossier d'album qui existe déjà n'est jamais écrasé ni fusionné (l'album est ignoré, et noté au journal). La
   copie passe par un dossier d'attente sur le disque musique puis un renommage d'un bloc : un scan ne voit jamais un
   demi-album. La place libre est vérifiée avant. Chaque torrent n'est traité qu'une fois

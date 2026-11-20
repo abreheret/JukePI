@@ -5,7 +5,7 @@
 ## Unreleased
 
 ### Added
-- **Albums downloaded by a torrent client join the library by themselves**, filed as `<Artist>/<Album>/` from their tags like the rest of the library (`Various Artists` for compilations, CD1/CD2 kept, several albums per torrent). `music-server/deploy/torrent-albums/` copies each finished qBittorrent download that contains MP3s (MP3 files and covers only), never overwrites an album already there, imports each torrent once (deleting the torrent keeps the music) and starts a rescan. See docs/OPERATIONS.md.
+- **Albums downloaded by a torrent client join the library by themselves**, filed as `<Artist>/<Album>/` from their tags like the rest of the library (`Various Artists` for compilations, CD1/CD2 kept, several albums per torrent). `music-server/deploy/torrent-albums/` copies each finished qBittorrent download that contains MP3 or FLAC files (music and covers only; FLAC converted to MP3 320k with tags and cover), never overwrites an album already there, imports each torrent once (deleting the torrent keeps the music) and starts a rescan. See docs/OPERATIONS.md.
 - The scanner follows symbolic links (albums stored elsewhere can be linked into the library).
 
 ## 0.3.0 - 2026-11-14

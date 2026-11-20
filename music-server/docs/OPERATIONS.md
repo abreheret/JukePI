@@ -89,18 +89,21 @@ Everything is off without a key. What each level sends to Last.fm (`ws.audioscro
 
 ## Albums downloaded by a torrent client (optional)
 
-`deploy/torrent-albums/` copies the MP3 albums finished by qBittorrent into the library, filed like the rest of it
-(`<Artist>/<Album>/`), and starts a rescan:
+`deploy/torrent-albums/` copies the MP3 and FLAC albums finished by qBittorrent into the library, filed like the rest of
+it (`<Artist>/<Album>/`), and starts a rescan. The server plays MP3 only: FLAC files are converted to MP3 320k
+(`MP3_BITRATE`) with their tags and embedded cover, hi-res ones resampled to 48 kHz (2 conversions at once,
+`CONVERT_JOBS`, at low priority; about 2 s per minute of music on a Pi 4). The FLAC files stay in the downloads.
 
 - `torrent-finished.sh`, set in qBittorrent as *Run external program on torrent finished*:
   `/config/scripts/torrent-finished.sh "%F"` (paths as seen in the qBittorrent container). It only appends the
   finished torrent's path to `finished-torrents.txt` in qBittorrent's config folder.
 - `import-torrent-albums.py` (installed as `/usr/local/bin/jukepi-import-torrent-albums`, needs `python3` and
-  `ffprobe`) reads the ID3 tags of every MP3 of a finished torrent and groups them by album tag (one torrent can hold
+  `ffmpeg`) reads the tags of every MP3/FLAC file of a finished torrent and groups them by album tag (one torrent can hold
   a whole discography). Artist folder: the album artist tag, else the artist of more than half of the tracks
   ("feat." ignored), else `Various Artists`. Album folder: the album tag. Without tags, both come from the folder
   names (`Artist - Album (2020) [MP3]`, `2001 - Album` inside a discography, `CD1`/`CD2` kept as one album).
-  Only MP3 files and cover images are copied, sub-folders (CD1, CD2) kept, names made NTFS/Windows-safe.
+  Only music files and cover images are copied, sub-folders (CD1, CD2) kept, names made NTFS/Windows-safe. An album
+  that comes both as MP3 and FLAC keeps its MP3 files; a FLAC track that cannot be converted is skipped (logged).
 - An album folder that already exists is never overwritten nor merged (the album is skipped, logged). The copy goes
   through a staging folder on the music disk and one rename, so a scan never sees half an album. Free space is
   checked first. Each torrent is handled once (`~/.local/state/jukepi/imported-torrents.txt`): deleting the torrent

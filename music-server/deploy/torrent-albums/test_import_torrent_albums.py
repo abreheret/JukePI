@@ -117,6 +117,13 @@ class Planning(unittest.TestCase):
         self.mp3("Air - Moon Safari (1998)/CD2/01.mp3")
         self.assertEqual(self.plan("Air - Moon Safari (1998)"), [("Air", "Moon Safari", "Air - Moon Safari (1998)", 2, True)])
 
+    def test_flac_and_mp3_of_one_album_keeps_the_mp3(self):
+        self.mp3("T/mp3/01.mp3", "Album", "Artist")
+        self.mp3("T/flac/01.flac", "Album", "Artist")
+        self.mp3("U/01.flac", "Lossless", "Artist")
+        self.assertEqual(self.plan("T"), [("Artist", "Album", "T/mp3", 1, True)])
+        self.assertEqual(self.plan("U"), [("Artist", "Lossless", "U", 1, True)])
+
     def test_single_file(self):
         self.mp3("Artist - Song.mp3")
         self.assertEqual(self.plan("Artist - Song.mp3"), [("Artist", "Singles", ".", 1, False)])
@@ -173,6 +180,31 @@ class EndToEnd(unittest.TestCase):
         with open(self.done) as f:
             self.assertEqual(f.read().splitlines(), [f"/downloads/{t}", "/downloads/Not Music"])
         self.assertFalse(os.path.exists(os.path.join(self.root, "incoming")))
+
+        # FLAC: converted to MP3 320k, tags and embedded cover kept, hi-res resampled to 48 kHz
+        f = "Björk - Homogenic (1997) [FLAC 24-96]"
+        cover = os.path.join(self.root, "c.png")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=red:s=64x64:d=1", "-frames:v", "1", cover], check=True)
+        p = os.path.join(self.downloads, f, "01 - Hunter.flac")
+        os.makedirs(os.path.dirname(p))
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=d=1:sample_rate=96000", "-i", cover,
+                        "-map", "0", "-map", "1", "-c:v", "png", "-disposition:v", "attached_pic",
+                        "-metadata", "artist=Björk", "-metadata", "album=Homogenic", "-metadata", "title=Hunter",
+                        "-metadata", "track=1", p], check=True)
+        self.make_mp3(f"{f}/02 - Joga.flac", artist="Björk", album="Homogenic", title="Joga")  # no cover
+        touch(os.path.join(self.downloads, f, "02 - broken.flac"), b"not a flac")  # skipped, logged
+        self.finish(f)
+        self.m.main()
+        out = os.path.join(self.music, "Björk", "Homogenic")
+        self.assertEqual(sorted(os.listdir(out)), ["01 - Hunter.mp3", "02 - Joga.mp3"])
+        probe = lambda q: subprocess.run(["ffprobe", "-v", "error", *q, os.path.join(out, "01 - Hunter.mp3")],
+                                         capture_output=True, text=True).stdout.strip()
+        self.assertEqual(sorted(probe(["-show_entries", "format_tags=artist,album,title,track", "-of", "default=nw=1"]).split("\n")),
+                         ["TAG:album=Homogenic", "TAG:artist=Björk", "TAG:title=Hunter", "TAG:track=1"])
+        self.assertEqual(probe(["-select_streams", "a:0", "-show_entries", "stream=codec_name,sample_rate,bit_rate", "-of", "csv=p=0"]),
+                         "mp3,48000,320000")
+        self.assertEqual(probe(["-select_streams", "v", "-show_entries", "stream=codec_name", "-of", "csv=p=0"]), "png")
+        shutil.rmtree(os.path.join(self.music, "Björk"))
 
         # handled once: removing the album from the library does not bring it back
         shutil.rmtree(os.path.join(self.music, "Oasis"))

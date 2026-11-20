@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""Copies finished torrent downloads that contain MP3 files into the music library, filed as
-<Artist>/<Album>/ from their ID3 tags, then asks the music server to rescan.
+"""Copies finished torrent downloads that contain MP3 or FLAC files into the music library, filed as
+<Artist>/<Album>/ from their tags, then asks the music server to rescan. The music server plays MP3 only:
+FLAC files are converted to MP3 (MP3_BITRATE, 320k by default), tags and embedded cover kept.
 
 Runs on the host (systemd units next to this file), as the user that owns the library.
-Needs ffprobe (ffmpeg) to read the tags.
+Needs ffmpeg and ffprobe.
 
 qBittorrent records each finished torrent in FINISHED_LIST (see torrent-finished.sh); paths there are the
 ones qBittorrent sees (CONTAINER_DOWNLOADS, e.g. /downloads/...), mapped here to DOWNLOADS.
 
-- The MP3 files of a torrent are grouped by album tag: one torrent can hold several albums (discography).
-- Artist folder: the album artist tag, else the artist shared by all tracks, else "Various Artists".
+- The MP3/FLAC files of a torrent are grouped by album tag: one torrent can hold several albums (discography).
+  An album that comes both as MP3 and FLAC in the same torrent keeps its MP3 files only.
+- Artist folder: the album artist tag, else the artist of more than half of the tracks, else "Various Artists".
   Album folder: the album tag. Without tags, both come from the folder name ("Artist - Album (2020) [MP3]").
-- Inside the album folder, sub-folders are kept (CD1, CD2...). Only MP3 files and cover images are copied.
+- Inside the album folder, sub-folders are kept (CD1, CD2...). Only music files and cover images are copied.
+  A FLAC track that cannot be converted is skipped (logged); the rest of the album is imported.
 - An album folder that already exists is never overwritten nor merged: the album is skipped (logged).
 - The copy is made in STAGING (same disk as the library, outside it) then moved in one rename, so the music
   server never indexes a half-copied album. Free space is checked first.
@@ -30,7 +33,9 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import contextlib
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 ENV = os.environ.get
 DOWNLOADS = ENV("DOWNLOADS", "/mnt/usb/WD2To/downloads")
@@ -43,6 +48,9 @@ SCAN_URL = ENV("SCAN_URL", "http://localhost:8765/scan")
 REQUIRE_MOUNTED = ENV("REQUIRE_MOUNTED", "1") != "0"  # 0: tests in a temporary folder
 VARIOUS = ENV("VARIOUS_ARTISTS", "Various Artists")
 IMAGES = (".jpg", ".jpeg", ".png", ".webp")
+AUDIO = (".mp3", ".flac")
+MP3_BITRATE = ENV("MP3_BITRATE", "320k")
+CONVERT_JOBS = int(ENV("CONVERT_JOBS", "2"))  # FLAC conversions at once (the Pi has other work)
 MARGIN = 1024**3  # keep 1 GiB free
 
 
@@ -121,9 +129,9 @@ def main_artist(items):
 
 
 def plan_albums(root, tags_of=read_tags):
-    """Groups the MP3 files under `root` (a folder, or a single file) into albums.
+    """Groups the MP3/FLAC files under `root` (a folder, or a single file) into albums.
 
-    Returns [(artist, album, base_dir, [mp3 paths], copy_images)]: files are copied relative to base_dir
+    Returns [(artist, album, base_dir, [track paths], copy_images)]: files are copied relative to base_dir
     (their common folder, so CD1/CD2 sub-folders are kept); copy_images is False for a single file (its
     folder is the downloads folder, its images are not its cover).
     """
@@ -132,7 +140,7 @@ def plan_albums(root, tags_of=read_tags):
         files = [root]
         t_artist, t_album = split_folder_name(os.path.splitext(os.path.basename(root))[0])
     else:
-        files = sorted(os.path.join(d, f) for d, _, fs in os.walk(root) for f in fs if f.lower().endswith(".mp3"))
+        files = sorted(os.path.join(d, f) for d, _, fs in os.walk(root) for f in fs if f.lower().endswith(AUDIO))
         t_artist, t_album = split_folder_name(os.path.basename(root.rstrip("/")))
     groups = {}
     for f in files:
@@ -148,6 +156,8 @@ def plan_albums(root, tags_of=read_tags):
 
     plans = []
     for items in groups.values():
+        if any(f.lower().endswith(".mp3") for f, _ in items):  # same album as MP3 and FLAC: the MP3 is enough
+            items = [(f, t) for f, t in items if f.lower().endswith(".mp3")]
         paths = [f for f, _ in items]
         base = os.path.commonpath([os.path.dirname(p) for p in paths])
         if single or base.rstrip("/") == root.rstrip("/"):
@@ -191,35 +201,93 @@ def free_bytes(path):
     return st.f_bavail * st.f_frsize
 
 
-def copy_album(artist, album, base, mp3s, copy_images=True):
-    """Copies one album into MUSIC_ROOT/artist/album. Returns 'imported', 'exists' or 'nospace'."""
+def sample_rate(path):
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate",
+             "-of", "default=nw=1:nk=1", path],
+            capture_output=True, text=True, timeout=30, check=False,
+        ).stdout.strip()
+        return int(out) if out.isdigit() else 0
+    except (subprocess.SubprocessError, OSError):
+        return 0
+
+
+def to_mp3(src, target):
+    """FLAC -> MP3 (MP3_BITRATE), tags and embedded cover kept. Returns None or an error message."""
+    base_cmd = ["ffmpeg", "-v", "error", "-nostdin", "-y", "-i", src, "-map", "0:a:0"]
+    audio = ["-c:a", "libmp3lame", "-b:a", MP3_BITRATE, "-map_metadata", "0", "-id3v2_version", "3"]
+    if sample_rate(src) > 48000:  # MP3 stops at 48 kHz (hi-res FLAC)
+        audio += ["-ar", "48000"]
+    with_cover = ["-map", "0:v?", "-c:v", "copy", "-disposition:v", "attached_pic"]
+    err = ""
+    for extra in (with_cover, []):  # a cover MP3 cannot hold: retry without it
+        try:
+            r = subprocess.run(base_cmd + extra + audio + ["-f", "mp3", target],
+                               capture_output=True, text=True, timeout=1800, check=False)
+        except (subprocess.SubprocessError, OSError) as e:
+            return str(e)
+        if r.returncode == 0:
+            return None
+        err = (r.stderr or "").strip().splitlines()[-1:] or ["ffmpeg failed"]
+        err = err[0]
+    return err
+
+
+def copy_album(artist, album, base, tracks, copy_images=True):
+    """Copies one album into MUSIC_ROOT/artist/album, FLAC tracks converted to MP3.
+    Returns 'imported', 'exists', 'nospace' (retry later) or 'failed' (no track usable: not retried)."""
     dest = os.path.join(MUSIC_ROOT, artist, album)
     if os.path.exists(dest):
         log(f"already in the library, skipped: {artist}/{album}")
         return "exists"
     images = []
     if copy_images:  # covers: images in the album's folders (base folder + every folder holding its files)
-        dirs = {base} | {os.path.dirname(p) for p in mp3s}
+        dirs = {base} | {os.path.dirname(p) for p in tracks}
         images = sorted(os.path.join(d, f) for d in dirs for f in os.listdir(d) if f.lower().endswith(IMAGES))
-    files = mp3s + images
-    size = sum(os.path.getsize(f) for f in files)
+    flacs = [f for f in tracks if f.lower().endswith(".flac")]
+    # MP3 320k is about a third of a FLAC: count half to be safe
+    size = sum(os.path.getsize(f) for f in tracks + images if f not in flacs) + sum(os.path.getsize(f) for f in flacs) // 2
     if free_bytes(MUSIC_ROOT) < size + MARGIN:
         warn(f"not enough space on the music disk for {artist}/{album} ({size // 2**20} MB), will retry")
         return "nospace"
     stage = os.path.join(STAGING, uuid.uuid4().hex)
+
+    def target_of(f):
+        rel = os.path.relpath(f, base)
+        if f in flacs:
+            rel = os.path.splitext(rel)[0] + ".mp3"
+        t = os.path.join(stage, *[clean_name(p, "_") for p in rel.split(os.sep)])
+        os.makedirs(os.path.dirname(t), exist_ok=True)
+        return t
+
+    failed = []
     try:
-        for f in files:
-            rel = os.path.relpath(f, base)
-            parts = [clean_name(p, "_") for p in rel.split(os.sep)]
-            target = os.path.join(stage, *parts)
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            shutil.copy2(f, target)
+        for f in tracks + images:
+            if f not in flacs:
+                shutil.copy2(f, target_of(f))
+        if flacs:
+            with ThreadPoolExecutor(max_workers=max(1, CONVERT_JOBS)) as pool:
+                jobs = {f: pool.submit(to_mp3, f, target_of(f)) for f in flacs}
+            for f, job in jobs.items():
+                if job.result():
+                    failed.append(f)
+                    warn(f"FLAC not converted, skipped: {os.path.relpath(f, base)} ({job.result()})")
+                    with contextlib.suppress(OSError):
+                        os.remove(target_of(f))
+        if len(failed) == len(tracks):
+            shutil.rmtree(stage, ignore_errors=True)
+            warn(f"no track could be imported for {artist}/{album}")
+            return "failed"
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         os.rename(stage, dest)
     except OSError:
         shutil.rmtree(stage, ignore_errors=True)
         raise
-    log(f"imported: {artist}/{album} ({len(mp3s)} MP3, {size // 2**20} MB)")
+    n = len(tracks) - len(failed)
+    converted = len(flacs) - len(failed)
+    note = f", {converted} converted from FLAC" if converted else ""
+    log(f"imported: {artist}/{album} ({n} tracks{note})")
     return "imported"
 
 
@@ -273,10 +341,10 @@ def main():
             continue
         src = host_path(entry)
         finished = True
-        if os.path.isdir(src) or (os.path.isfile(src) and src.lower().endswith(".mp3")):
-            for artist, album, base, mp3s, copy_images in plan_albums(src):
+        if os.path.isdir(src) or (os.path.isfile(src) and src.lower().endswith(AUDIO)):
+            for artist, album, base, tracks, copy_images in plan_albums(src):
                 try:
-                    result = copy_album(artist, album, base, mp3s, copy_images)
+                    result = copy_album(artist, album, base, tracks, copy_images)
                 except OSError as e:
                     warn(f"copy of {artist}/{album} failed ({e}), will retry")
                     result = "nospace"

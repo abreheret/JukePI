@@ -1,5 +1,5 @@
 [Unit]
-Description=Periodic check for finished MP3 torrents not imported yet
+Description=Periodic check for finished music torrents not imported yet
 
 [Timer]
 OnBootSec=5min

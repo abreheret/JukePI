@@ -1,5 +1,5 @@
 [Unit]
-Description=Copy finished MP3 torrents into the music library and rescan
+Description=Import finished MP3/FLAC torrents into the music library and rescan
 After=mnt-music.mount music-server.service
 
 [Service]
@@ -8,3 +8,7 @@ Type=oneshot
 User=pi
 EnvironmentFile=-/etc/music-server/torrent-albums.env
 ExecStart=/usr/local/bin/jukepi-import-torrent-albums
+# FLAC conversions are CPU work: stay behind the music server, Plex and PhotoPI.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
