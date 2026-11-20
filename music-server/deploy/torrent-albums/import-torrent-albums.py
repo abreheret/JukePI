@@ -21,6 +21,8 @@ ones qBittorrent sees (CONTAINER_DOWNLOADS, e.g. /downloads/...), mapped here to
 - Each torrent is handled once (DONE_LIST): deleting the torrent keeps the music, deleting the album from
   the library does not bring it back. To import a torrent again, remove its line from DONE_LIST.
 - Nothing happens while one of the disks is not mounted; the entries wait for the next run.
+- A torrent with an audio file that cannot be read (missing data, e.g. after a disk failure) is not imported at
+  all: it is retried at each run until the files are whole again (force a recheck in qBittorrent).
 """
 
 import json
@@ -94,20 +96,24 @@ def split_folder_name(folder):
 # ---------- tags ----------
 
 def read_tags(path):
-    """{'album', 'artist', 'album_artist'} (lowercase keys, empty when missing) via ffprobe."""
+    """{'album', 'artist', 'album_artist', 'readable'} via ffprobe (tags: lowercase keys, empty when missing).
+    readable is False when ffprobe finds no playable audio (a download with missing data, a broken file)."""
     try:
         out = subprocess.run(
-            ["ffprobe", "-v", "error", "-print_format", "json", "-show_entries", "format_tags", path],
-            capture_output=True, text=True, timeout=30, check=False,
+            ["ffprobe", "-v", "error", "-print_format", "json", "-show_entries", "format=duration:format_tags", path],
+            capture_output=True, text=True, timeout=60, check=False,
         ).stdout
-        tags = {k.lower(): v for k, v in (json.loads(out or "{}").get("format", {}).get("tags", {}) or {}).items()}
+        fmt = json.loads(out or "{}").get("format", {}) or {}
+        tags = {k.lower(): v for k, v in (fmt.get("tags", {}) or {}).items()}
+        readable = float(fmt.get("duration") or 0) > 0
     except (subprocess.SubprocessError, ValueError, OSError):
-        tags = {}
+        tags, readable = {}, False
     pick = lambda *keys: next((tags[k].strip() for k in keys if tags.get(k, "").strip()), "")
     return {
         "album": pick("album"),
         "artist": pick("artist"),
         "album_artist": pick("album_artist", "albumartist", "album artist"),
+        "readable": readable,
     }
 
 
@@ -143,8 +149,12 @@ def plan_albums(root, tags_of=read_tags):
         files = sorted(os.path.join(d, f) for d, _, fs in os.walk(root) for f in fs if f.lower().endswith(AUDIO))
         t_artist, t_album = split_folder_name(os.path.basename(root.rstrip("/")))
     groups = {}
+    unreadable = []
     for f in files:
         t = tags_of(f)
+        if not t.get("readable", True):
+            unreadable.append(f)
+            continue
         if t["album"]:
             key = "tag:" + t["album"].casefold()
         else:  # no album tag: the folder holding the file is the album (a CD1/CD2 folder: its parent)
@@ -176,7 +186,13 @@ def plan_albums(root, tags_of=read_tags):
         else:
             album = g_album or "Unknown Album"
         plans.append((clean_name(artist, "Unknown Artist"), clean_name(album, "Unknown Album"), base, paths, not single))
+    if unreadable:  # missing data in the download: import nothing of this torrent now (no half album)
+        raise Unreadable(unreadable)
     return plans
+
+
+class Unreadable(Exception):
+    """Audio files of a torrent that cannot be read (yet): the torrent is retried at the next run."""
 
 
 # ---------- copy ----------
@@ -351,7 +367,14 @@ def main():
         src = host_path(entry)
         finished = True
         if os.path.isdir(src) or (os.path.isfile(src) and src.lower().endswith(AUDIO)):
-            for artist, album, base, tracks, copy_images in plan_albums(src):
+            try:
+                plans = plan_albums(src)
+            except Unreadable as e:
+                names = ", ".join(os.path.relpath(f, src) if f != src else os.path.basename(f) for f in e.args[0][:5])
+                warn(f"{os.path.basename(src)}: {len(e.args[0])} unreadable audio file(s) ({names}): incomplete or "
+                     "damaged download (force a recheck in qBittorrent); nothing imported, will retry")
+                continue
+            for artist, album, base, tracks, copy_images in plans:
                 try:
                     result = copy_album(artist, album, base, tracks, copy_images)
                 except OSError as e:

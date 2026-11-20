@@ -124,6 +124,13 @@ class Planning(unittest.TestCase):
         self.assertEqual(self.plan("T"), [("Artist", "Album", "T/mp3", 1, True)])
         self.assertEqual(self.plan("U"), [("Artist", "Lossless", "U", 1, True)])
 
+    def test_unreadable_file_blocks_the_torrent(self):
+        self.mp3("T/01.flac", "Album", "Artist")
+        p = self.mp3("T/02.flac", "", "")
+        self.tags[p]["readable"] = False
+        with self.assertRaises(M.Unreadable):
+            self.plan("T")
+
     def test_single_file(self):
         self.mp3("Artist - Song.mp3")
         self.assertEqual(self.plan("Artist - Song.mp3"), [("Artist", "Singles", ".", 1, False)])
@@ -192,7 +199,6 @@ class EndToEnd(unittest.TestCase):
                         "-metadata", "artist=Björk", "-metadata", "album=Homogenic", "-metadata", "title=Hunter",
                         "-metadata", "track=1", p], check=True)
         self.make_mp3(f"{f}/02 - Joga.flac", artist="Björk", album="Homogenic", title="Joga")  # no cover
-        touch(os.path.join(self.downloads, f, "02 - broken.flac"), b"not a flac")  # skipped, logged
         self.finish(f)
         self.m.main()
         out = os.path.join(self.music, "Björk", "Homogenic")
@@ -221,6 +227,20 @@ class EndToEnd(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.music, "Vanishing")))
         with open(self.done) as f:
             self.assertNotIn(f"/downloads/{g}", f.read().splitlines())
+
+        # a file with missing data (zeros: the disk dropped while writing it): nothing imported, retried
+        h = "Holes - Album"
+        self.make_mp3(f"{h}/01 - ok.flac", artist="Holes", album="Album")
+        touch(os.path.join(self.downloads, h, "02 - zeros.flac"), bytes(4096))
+        self.finish(h)
+        self.m.main()
+        self.assertFalse(os.path.exists(os.path.join(self.music, "Holes")))
+        with open(self.done) as f:
+            self.assertNotIn(f"/downloads/{h}", f.read().splitlines())
+        self.make_mp3(f"{h}/02 - zeros.flac", artist="Holes", album="Album")  # recheck re-downloaded it
+        self.m.main()
+        self.assertEqual(sorted(os.listdir(os.path.join(self.music, "Holes", "Album"))), ["01 - ok.mp3", "02 - zeros.mp3"])
+        shutil.rmtree(os.path.join(self.music, "Holes"))
 
         # handled once: removing the album from the library does not bring it back
         shutil.rmtree(os.path.join(self.music, "Oasis"))
