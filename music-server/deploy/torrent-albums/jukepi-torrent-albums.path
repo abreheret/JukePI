@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch the list of torrents finished by qBittorrent
+
+[Path]
+# Written by torrent-finished.sh each time a torrent finishes.
+PathModified=/home/pi/.config/qbittorrent/finished-torrents.txt
+Unit=jukepi-torrent-albums.service
+
+[Install]
+WantedBy=multi-user.target

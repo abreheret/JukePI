@@ -239,7 +239,10 @@ pub fn run(root: &Path, db_path: &Path, state: &SharedScan) -> Result<()> {
     let mut pending = 0u32;
     conn.execute_batch("BEGIN")?;
 
-    for entry in WalkDir::new(root).follow_links(false) {
+    // Symlinks are followed: albums downloaded elsewhere (e.g. by a torrent client on another disk) are
+    // linked into the library (see deploy/torrent-albums). walkdir detects symlink loops (walk error).
+    // Paths stay relative to `root` (the link's path, not its target), so streaming goes through the link.
+    for entry in WalkDir::new(root).follow_links(true) {
         let entry = match entry {
             Ok(e) => e,
             Err(e) => {

@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic check: new torrent albums, links to deleted downloads
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+Unit=jukepi-torrent-albums.service
+
+[Install]
+WantedBy=timers.target

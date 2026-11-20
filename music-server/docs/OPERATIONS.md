@@ -87,6 +87,27 @@ Everything is off without a key. What each level sends to Last.fm (`ws.audioscro
 
 `/lastfm/*` has no authentication, like the rest of the API: keep the server on a trusted network. If a secret leaked (pasted somewhere public), create a new application on Last.fm, replace the values and redeploy.
 
+## Albums downloaded by a torrent client (optional)
+
+The scanner follows symbolic links, so albums stored elsewhere (another disk) can be linked into the library.
+`deploy/torrent-albums/` automates this for qBittorrent:
+
+- `torrent-finished.sh`, set in qBittorrent as *Run external program on torrent finished*:
+  `/config/scripts/torrent-finished.sh "%F"` (paths as seen in the qBittorrent container). It only appends the
+  finished torrent's path to `finished-torrents.txt` in qBittorrent's config folder.
+- `link-torrent-albums.sh` (installed as `/usr/local/bin/jukepi-link-torrent-albums`) links every finished folder
+  that contains an MP3 into `MUSIC_ROOT/_Torrents/<torrent name>` (single MP3 files into `_Torrents/_Singles/`),
+  removes links whose download was deleted, then starts a rescan (it waits if a scan is already running). It does
+  nothing while one of the two disks is not mounted, so an unplugged download disk never empties the library.
+- `jukepi-torrent-albums.path` runs it as soon as the list changes; `jukepi-torrent-albums.timer` every 30 minutes
+  (deleted downloads). Paths are variables at the top of the script (`DOWNLOADS`, `CONTAINER_DOWNLOADS`,
+  `FINISHED_LIST`, `LINK_DIR`, `SCAN_URL`), overridable in `/etc/music-server/torrent-albums.env`.
+
+Install (on the Pi): copy the script to `/usr/local/bin/jukepi-link-torrent-albums`, the three units to
+`/etc/systemd/system/`, `torrent-finished.sh` to qBittorrent's `config/scripts/`, set the qBittorrent option, then
+`sudo systemctl enable --now jukepi-torrent-albums.path jukepi-torrent-albums.timer`.
+Logs: `journalctl -u jukepi-torrent-albums.service`.
+
 ## Deploying a new version
 
 From your computer, in `music-server/`: `PI=pi@raspberrypi.local ./deploy/deploy.sh` (tests, cross-compilation, upload, restart; asks for the `sudo` password). If `deploy/music-server.env` exists it is installed on the Pi as `/etc/music-server/music-server.env` (root only) and overrides the unit's `Environment=` lines; without it the Pi keeps its settings. Without a Rust toolchain, deploy the binary of a GitHub release instead: `PREBUILT=./music-server-linux-aarch64 PI=pi@raspberrypi.local ./deploy/deploy.sh` (it skips the tests and the build). The binary is built with `cargo zigbuild --release --target aarch64-unknown-linux-gnu.2.36` (`.2.36` sets the minimum glibc version; the Pi has 2.41). The systemd unit is only installed if the Pi does not have one yet (`FORCE_UNIT=1` to overwrite it): it holds your settings. The same steps were run by hand during development; the script itself has not been run end to end. The `sudo` password prompt is interactive: run the script **in a real terminal**.

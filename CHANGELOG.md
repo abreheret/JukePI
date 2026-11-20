@@ -2,6 +2,11 @@
 
 🇫🇷 Le journal des modifications est en anglais ; la documentation existe en français (`*.fr.md`).
 
+## Unreleased
+
+### Added
+- **Albums downloaded by a torrent client join the library by themselves.** The scanner now follows symbolic links, and `music-server/deploy/torrent-albums/` links each finished qBittorrent download that contains MP3s into `_Torrents/` and starts a rescan; links to deleted downloads are removed, never while a disk is unmounted. See docs/OPERATIONS.md.
+
 ## 0.3.0 - 2026-11-14
 
 ### Added
