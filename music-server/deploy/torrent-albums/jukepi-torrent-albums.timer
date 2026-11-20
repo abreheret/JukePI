@@ -1,5 +1,5 @@
 [Unit]
-Description=Periodic check: new torrent albums, links to deleted downloads
+Description=Periodic check for finished MP3 torrents not imported yet
 
 [Timer]
 OnBootSec=5min

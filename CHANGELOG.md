@@ -5,7 +5,8 @@
 ## Unreleased
 
 ### Added
-- **Albums downloaded by a torrent client join the library by themselves.** The scanner now follows symbolic links, and `music-server/deploy/torrent-albums/` links each finished qBittorrent download that contains MP3s into `_Torrents/` and starts a rescan; links to deleted downloads are removed, never while a disk is unmounted. See docs/OPERATIONS.md.
+- **Albums downloaded by a torrent client join the library by themselves.** `music-server/deploy/torrent-albums/` copies each finished qBittorrent download that contains MP3s (MP3 files and covers only) into `_Torrents/` and starts a rescan; each torrent is imported once, deleting the torrent keeps the music. See docs/OPERATIONS.md.
+- The scanner follows symbolic links (albums stored elsewhere can be linked into the library).
 
 ## 0.3.0 - 2026-11-14
 

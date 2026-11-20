@@ -89,24 +89,27 @@ Everything is off without a key. What each level sends to Last.fm (`ws.audioscro
 
 ## Albums downloaded by a torrent client (optional)
 
-The scanner follows symbolic links, so albums stored elsewhere (another disk) can be linked into the library.
-`deploy/torrent-albums/` automates this for qBittorrent:
+`deploy/torrent-albums/` copies the MP3 albums finished by qBittorrent into the library and starts a rescan:
 
 - `torrent-finished.sh`, set in qBittorrent as *Run external program on torrent finished*:
   `/config/scripts/torrent-finished.sh "%F"` (paths as seen in the qBittorrent container). It only appends the
   finished torrent's path to `finished-torrents.txt` in qBittorrent's config folder.
-- `link-torrent-albums.sh` (installed as `/usr/local/bin/jukepi-link-torrent-albums`) links every finished folder
-  that contains an MP3 into `MUSIC_ROOT/_Torrents/<torrent name>` (single MP3 files into `_Torrents/_Singles/`),
-  removes links whose download was deleted, then starts a rescan (it waits if a scan is already running). It does
-  nothing while one of the two disks is not mounted, so an unplugged download disk never empties the library.
+- `import-torrent-albums.sh` (installed as `/usr/local/bin/jukepi-import-torrent-albums`) copies every finished
+  folder that contains an MP3 into `MUSIC_ROOT/_Torrents/<torrent name>/`: the MP3 files and cover images only
+  (sub-folders kept), first into a staging folder on the music disk, then moved in one rename so a scan never sees
+  half an album. Single MP3 files go to `_Torrents/_Singles/`. It checks the free space first, handles each torrent
+  once (`~/.local/state/jukepi/imported-torrents.txt`: deleting the torrent keeps the music, deleting the album
+  does not bring it back), waits while a disk is unmounted, and starts a rescan (waiting if one is running).
 - `jukepi-torrent-albums.path` runs it as soon as the list changes; `jukepi-torrent-albums.timer` every 30 minutes
-  (deleted downloads). Paths are variables at the top of the script (`DOWNLOADS`, `CONTAINER_DOWNLOADS`,
-  `FINISHED_LIST`, `LINK_DIR`, `SCAN_URL`), overridable in `/etc/music-server/torrent-albums.env`.
+  (entries that had to wait). Paths are variables at the top of the script (`DOWNLOADS`, `CONTAINER_DOWNLOADS`,
+  `FINISHED_LIST`, `DONE_LIST`, `DEST_DIR`, `STAGING`, `SCAN_URL`), overridable in
+  `/etc/music-server/torrent-albums.env`.
 
-Install (on the Pi): copy the script to `/usr/local/bin/jukepi-link-torrent-albums`, the three units to
+Install (on the Pi): copy the script to `/usr/local/bin/jukepi-import-torrent-albums`, the three units to
 `/etc/systemd/system/`, `torrent-finished.sh` to qBittorrent's `config/scripts/`, set the qBittorrent option, then
 `sudo systemctl enable --now jukepi-torrent-albums.path jukepi-torrent-albums.timer`.
-Logs: `journalctl -u jukepi-torrent-albums.service`.
+Logs: `journalctl -u jukepi-torrent-albums.service`. The scanner also follows symbolic links, if you prefer to link
+albums stored elsewhere.
 
 ## Deploying a new version
 

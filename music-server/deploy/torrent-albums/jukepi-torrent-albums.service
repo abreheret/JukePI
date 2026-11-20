@@ -1,5 +1,5 @@
 [Unit]
-Description=Link finished MP3 torrents into the music library and rescan
+Description=Copy finished MP3 torrents into the music library and rescan
 After=mnt-music.mount music-server.service
 
 [Service]
@@ -7,4 +7,4 @@ Type=oneshot
 # Adjust: user that owns the music library; paths can be overridden in the environment file.
 User=pi
 EnvironmentFile=-/etc/music-server/torrent-albums.env
-ExecStart=/usr/local/bin/jukepi-link-torrent-albums
+ExecStart=/usr/local/bin/jukepi-import-torrent-albums
