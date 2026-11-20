@@ -236,7 +236,8 @@ def to_mp3(src, target):
 
 def copy_album(artist, album, base, tracks, copy_images=True):
     """Copies one album into MUSIC_ROOT/artist/album, FLAC tracks converted to MP3.
-    Returns 'imported', 'exists', 'nospace' (retry later) or 'failed' (no track usable: not retried)."""
+    Returns 'imported', 'exists', 'nospace' / 'retry' (try again at the next run) or 'failed' (no track usable:
+    not retried)."""
     dest = os.path.join(MUSIC_ROOT, artist, album)
     if os.path.exists(dest):
         log(f"already in the library, skipped: {artist}/{album}")
@@ -269,6 +270,14 @@ def copy_album(artist, album, base, tracks, copy_images=True):
         if flacs:
             with ThreadPoolExecutor(max_workers=max(1, CONVERT_JOBS)) as pool:
                 jobs = {f: pool.submit(to_mp3, f, target_of(f)) for f in flacs}
+            # A source file that vanished (or a downloads disk that dropped) is not a broken FLAC: give the
+            # whole album up and retry later, instead of importing half of it.
+            if any(job.result() for job in jobs.values()) and (
+                not on_mounted_disk(DOWNLOADS) or any(job.result() and not os.path.exists(f) for f, job in jobs.items())
+            ):
+                shutil.rmtree(stage, ignore_errors=True)
+                warn(f"source files of {artist}/{album} are gone (downloads disk unplugged?), will retry")
+                return "retry"
             for f, job in jobs.items():
                 if job.result():
                     failed.append(f)
@@ -349,7 +358,7 @@ def main():
                     warn(f"copy of {artist}/{album} failed ({e}), will retry")
                     result = "nospace"
                 imported |= result == "imported"
-                finished &= result != "nospace"
+                finished &= result not in ("nospace", "retry")
         if finished:  # also: no MP3 inside, or deleted before we got to it
             with open(DONE_LIST, "a", encoding="utf-8", errors="surrogateescape") as f:
                 f.write(entry + "\n")

@@ -206,6 +206,22 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(probe(["-select_streams", "v", "-show_entries", "stream=codec_name", "-of", "csv=p=0"]), "png")
         shutil.rmtree(os.path.join(self.music, "Björk"))
 
+        # the downloads disk drops in the middle of a conversion: nothing imported, retried at the next run
+        g = "Vanishing - Album"
+        for i in range(4):
+            self.make_mp3(f"{g}/0{i} - T.flac", artist="Vanishing", album="Album")
+        self.finish(g)
+        real = self.m.to_mp3
+        def flaky(src, target):
+            shutil.rmtree(os.path.join(self.downloads, g), ignore_errors=True)  # the disk "drops"
+            return real(src, target)
+        self.m.to_mp3 = flaky
+        self.m.main()
+        self.m.to_mp3 = real
+        self.assertFalse(os.path.exists(os.path.join(self.music, "Vanishing")))
+        with open(self.done) as f:
+            self.assertNotIn(f"/downloads/{g}", f.read().splitlines())
+
         # handled once: removing the album from the library does not bring it back
         shutil.rmtree(os.path.join(self.music, "Oasis"))
         self.m.main()
