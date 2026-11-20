@@ -95,22 +95,29 @@ Après le premier déploiement qui apporte les pochettes, le scan résout tous l
 
 ## Albums téléchargés par un client torrent (facultatif)
 
-`deploy/torrent-albums/` copie dans la bibliothèque les albums MP3 terminés par qBittorrent et lance un rescan :
+`deploy/torrent-albums/` copie dans la bibliothèque les albums MP3 terminés par qBittorrent, rangés comme le reste
+(`<Artiste>/<Album>/`), et lance un rescan :
 
 - `torrent-finished.sh`, réglé dans qBittorrent comme *Lancer un programme externe à la fin d'un torrent* :
   `/config/scripts/torrent-finished.sh "%F"` (chemins vus depuis le conteneur qBittorrent). Il ajoute seulement le
   chemin du torrent terminé à `finished-torrents.txt` dans le dossier de config de qBittorrent.
-- `import-torrent-albums.sh` (installé en `/usr/local/bin/jukepi-import-torrent-albums`) copie chaque dossier terminé
-  qui contient un MP3 dans `MUSIC_ROOT/_Torrents/<nom du torrent>/` : seulement les MP3 et les pochettes
-  (sous-dossiers conservés), d'abord dans un dossier d'attente sur le disque musique, puis déplacé d'un bloc pour
-  qu'un scan ne voie jamais un demi-album. Un MP3 seul va dans `_Torrents/_Singles/`. Il vérifie la place libre,
-  traite chaque torrent une seule fois (`~/.local/state/jukepi/imported-torrents.txt` : supprimer le torrent garde
-  la musique, supprimer l'album ne le fait pas revenir), attend si un disque n'est pas monté, et lance un rescan
-  (en attendant la fin d'un scan en cours).
+- `import-torrent-albums.py` (installé en `/usr/local/bin/jukepi-import-torrent-albums`, demande `python3` et
+  `ffprobe`) lit les tags ID3 de chaque MP3 d'un torrent terminé et les regroupe par tag d'album (un torrent peut
+  contenir toute une discographie). Dossier artiste : le tag « artiste de l'album », sinon l'artiste de plus de la
+  moitié des pistes (« feat. » ignoré), sinon `Various Artists`. Dossier album : le tag album. Sans tags, les deux
+  viennent des noms de dossiers (`Artiste - Album (2020) [MP3]`, `2001 - Album` dans une discographie, `CD1`/`CD2`
+  gardés en un seul album). Seuls les MP3 et les pochettes sont copiés, sous-dossiers (CD1, CD2) conservés, noms
+  rendus compatibles NTFS/Windows.
+- Un dossier d'album qui existe déjà n'est jamais écrasé ni fusionné (l'album est ignoré, et noté au journal). La
+  copie passe par un dossier d'attente sur le disque musique puis un renommage d'un bloc : un scan ne voit jamais un
+  demi-album. La place libre est vérifiée avant. Chaque torrent n'est traité qu'une fois
+  (`~/.local/state/jukepi/imported-torrents.txt`) : supprimer le torrent garde la musique, supprimer l'album ne le
+  fait pas revenir. Rien ne se passe tant qu'un disque n'est pas monté.
 - `jukepi-torrent-albums.path` le lance dès que la liste change ; `jukepi-torrent-albums.timer` toutes les 30 minutes
   (entrées qui ont dû attendre). Les chemins sont des variables en tête du script (`DOWNLOADS`,
-  `CONTAINER_DOWNLOADS`, `FINISHED_LIST`, `DONE_LIST`, `DEST_DIR`, `STAGING`, `SCAN_URL`), modifiables dans
-  `/etc/music-server/torrent-albums.env`.
+  `CONTAINER_DOWNLOADS`, `FINISHED_LIST`, `DONE_LIST`, `MUSIC_ROOT`, `STAGING`, `SCAN_URL`, `VARIOUS_ARTISTS`),
+  modifiables dans `/etc/music-server/torrent-albums.env`. Tests :
+  `python3 -m unittest discover -s music-server/deploy/torrent-albums`.
 
 Installation (sur le Pi) : le script dans `/usr/local/bin/jukepi-import-torrent-albums`, les trois unités dans
 `/etc/systemd/system/`, `torrent-finished.sh` dans `config/scripts/` de qBittorrent, l'option réglée dans
