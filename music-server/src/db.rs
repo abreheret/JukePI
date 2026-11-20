@@ -3,8 +3,10 @@ use std::path::Path;
 use std::time::Duration;
 
 pub(crate) const SCHEMA: &str = "
+-- AUTOINCREMENT: an id is never given again after its album/track is deleted. The app caches covers and keeps
+-- downloads by id: a reused id would show another album's cover or claim another album is downloaded.
 CREATE TABLE IF NOT EXISTS albums(
-  id INTEGER PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   dir TEXT NOT NULL UNIQUE,
   dir_name TEXT NOT NULL,
   name TEXT NOT NULL,
@@ -17,7 +19,7 @@ CREATE TABLE IF NOT EXISTS albums(
   added_at INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS tracks(
-  id INTEGER PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   path TEXT NOT NULL UNIQUE,
   album_id INTEGER NOT NULL REFERENCES albums(id),
   title TEXT NOT NULL,
@@ -97,12 +99,88 @@ pub fn open(path: &Path) -> rusqlite::Result<Connection> {
     add_column_if_missing(&conn, "tracks", "duration_exact", "INTEGER NOT NULL DEFAULT 0")?;
     add_column_if_missing(&conn, "albums", "artist_key", "TEXT")?;
     conn.execute_batch("CREATE INDEX IF NOT EXISTS albums_artist_key ON albums(artist_key)")?;
+    // Index created before ids were AUTOINCREMENT: rebuild those tables, keeping every id.
+    for table in ["albums", "tracks"] {
+        make_autoincrement(&conn, table)?;
+    }
     Ok(conn)
+}
+
+/// Rebuilds `table` with `id INTEGER PRIMARY KEY AUTOINCREMENT` if it does not have it yet. Ids, columns
+/// (including the ones added later by ALTER TABLE) and indexes are kept; the next id is above the highest one.
+fn make_autoincrement(conn: &Connection, table: &str) -> rusqlite::Result<()> {
+    let sql: String = conn.query_row("SELECT sql FROM sqlite_master WHERE type='table' AND name=?1", [table], |r| r.get(0))?;
+    if sql.contains("AUTOINCREMENT") {
+        return Ok(());
+    }
+    let new_sql = sql
+        .replacen("id INTEGER PRIMARY KEY", "id INTEGER PRIMARY KEY AUTOINCREMENT", 1)
+        .replacen(&format!("TABLE {table}("), &format!("TABLE {table}_rebuild("), 1)
+        .replacen(&format!("TABLE \"{table}\"("), &format!("TABLE {table}_rebuild("), 1);
+    if !new_sql.contains("AUTOINCREMENT") || !new_sql.contains(&format!("{table}_rebuild(")) {
+        return Ok(()); // unexpected definition: leave it alone rather than guess
+    }
+    let indexes: Vec<String> = {
+        let mut st = conn.prepare("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name=?1 AND sql IS NOT NULL")?;
+        let v = st.query_map([table], |r| r.get(0))?.collect::<Result<_, _>>()?;
+        v
+    };
+    conn.execute_batch(&format!(
+        "PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE;
+         {new_sql};
+         INSERT INTO {table}_rebuild SELECT * FROM {table};
+         DROP TABLE {table};
+         ALTER TABLE {table}_rebuild RENAME TO {table};
+         {indexes}
+         COMMIT;",
+        indexes = indexes.iter().map(|i| format!("{i};")).collect::<Vec<_>>().join("\n")
+    ))?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deleted_ids_are_never_given_again() {
+        let path = std::env::temp_dir().join(format!("jukepi-autoinc-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            // an index made by an older version: plain INTEGER PRIMARY KEY, the newest album deleted
+            let c = Connection::open(&path).unwrap();
+            c.execute_batch(
+                "CREATE TABLE albums(id INTEGER PRIMARY KEY, dir TEXT NOT NULL UNIQUE, dir_name TEXT NOT NULL, name TEXT NOT NULL,
+                   artist TEXT, artist_count INTEGER NOT NULL DEFAULT 0, year INTEGER, track_count INTEGER NOT NULL DEFAULT 0,
+                   added_at INTEGER NOT NULL DEFAULT 0);
+                 CREATE TABLE tracks(id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, album_id INTEGER NOT NULL REFERENCES albums(id),
+                   title TEXT NOT NULL, artist TEXT, album_tag TEXT, genre TEXT, track_no INTEGER, disc_no INTEGER, year INTEGER,
+                   duration_ms INTEGER, bitrate_kbps INTEGER, size INTEGER NOT NULL, mtime INTEGER NOT NULL);
+                 CREATE INDEX tracks_album ON tracks(album_id);
+                 INSERT INTO albums(id, dir, dir_name, name) VALUES(1, 'a', 'a', 'A'), (2, 'b', 'b', 'B'), (3, 'c', 'c', 'C');
+                 INSERT INTO tracks(id, path, album_id, title, size, mtime) VALUES(10, 'a/1.mp3', 1, 't', 1, 1), (11, 'c/1.mp3', 3, 'u', 1, 1);
+                 DELETE FROM tracks WHERE album_id = 3; DELETE FROM albums WHERE id = 3;",
+            )
+            .unwrap();
+        }
+        let c = open(&path).unwrap();
+        let ids: Vec<i64> = c.prepare("SELECT id FROM albums ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
+        assert_eq!(ids, [1, 2], "existing ids kept");
+        let t: i64 = c.query_row("SELECT album_id FROM tracks WHERE id = 10", [], |r| r.get(0)).unwrap();
+        assert_eq!(t, 1);
+        c.execute_batch("DELETE FROM albums WHERE id = 2").unwrap(); // the newest one now
+        c.execute_batch("INSERT INTO albums(dir, dir_name, name) VALUES('d', 'd', 'D')").unwrap();
+        let new_id: i64 = c.query_row("SELECT id FROM albums WHERE dir = 'd'", [], |r| r.get(0)).unwrap();
+        assert!(new_id > 2, "id {new_id} was given again");
+        c.execute_batch("INSERT INTO tracks(path, album_id, title, size, mtime) VALUES('d/1.mp3', 1, 'v', 1, 1)").unwrap();
+        let tid: i64 = c.query_row("SELECT id FROM tracks WHERE path = 'd/1.mp3'", [], |r| r.get(0)).unwrap();
+        assert!(tid > 10);
+        let idx: i64 = c.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='tracks_album'", [], |r| r.get(0)).unwrap();
+        assert_eq!(idx, 1, "indexes kept");
+        drop(c);
+        let _ = open(&path).unwrap(); // second open: already AUTOINCREMENT, nothing to do
+        let _ = std::fs::remove_file(&path);
+    }
 
     #[test]
     fn an_old_index_gets_the_new_column() {
